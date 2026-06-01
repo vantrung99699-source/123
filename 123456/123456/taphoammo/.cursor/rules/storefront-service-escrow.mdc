@@ -1,0 +1,35 @@
+---
+description: Đơn dịch vụ — Tạm giữ tiền sau giao và nút +3 ngày → Hoàn thành
+globs: src/storefront/escrowAutoComplete.ts,src/storefront/orderTimers.ts,src/App.tsx,src/HomeView.tsx,src/PurchasedOrdersView.tsx,src/ordersTypes.ts
+alwaysApply: false
+---
+
+# Đơn dịch vụ — tạm giữ tiền và hoàn tất
+
+## Luồng trạng thái
+
+1. Khách thanh toán → **`Chờ xác nhận`** (không Tạm giữ ngay).
+2. Shop chấp nhận → **`Đang thực hiện`**.
+3. Shop giao nội dung → **`Tạm giữ tiền`** + `deliveryContent` + `escrowHoldStartedAtMs`.
+4. Sau **3 ngày** không khiếu nại → **`Hoàn thành`** (`escrowAutoComplete.ts`).
+
+## Quy tắc bắt buộc — ví tạm giữ 3 ngày
+
+Khi **`status === 'Tạm giữ tiền'`** (SP hoặc DV, sau thanh toán / sau giao DV):
+
+- **Ví chỉ giữ tiền 3 ngày** — hết hạn → **`Hoàn thành`** (`escrowAutoComplete.ts`).
+- Nút **+3 ngày**: một lần bấm → **`Hoàn thành`** (mô phỏng đủ 3 ngày tạm giữ).
+- **Không** loại đơn DV khỏi `isEscrowAutoCompleteCandidate`.
+
+## Kỹ thuật
+
+- Đếm 3 ngày từ `escrowHoldStartedAtMs` (ưu tiên), không từ lúc tạo đơn.
+- Gộp tick: `orderTimers.ts` → `applyEscrowAutoCompleteToOrder`.
+- Seller giao: `handleDeliverServiceOrder` trong `App.tsx` (set `escrowHoldStartedAtMs`).
+
+## Không nhầm với
+
+| Trạng thái DV | +3 ngày |
+|---------------|---------|
+| Chờ xác nhận / Đang thực hiện (chưa giao) | Hạn giao / xác nhận → **Thất bại** (`serviceOrderAutoFail.ts`) |
+| **Tạm giữ tiền** (đã giao) | → **Hoàn thành** |

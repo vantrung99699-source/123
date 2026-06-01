@@ -1,0 +1,6 @@
+Render:
+6743: active={currentView === 'gian-hang'}
+6811: {currentView === 'gian-hang' ? 'Quản lý gian hàng' :
+
+Logo:
+6734: <div className="font-bold text-slate-900 leading-tight text-lg font-display">New Panel</div>

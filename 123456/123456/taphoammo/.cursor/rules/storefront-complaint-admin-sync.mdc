@@ -1,0 +1,42 @@
+---
+description: Khiếu nại từ storefront đồng bộ Admin → Đơn hàng khiếu nại (allOrders)
+globs: src/PurchasedOrdersView.tsx,src/HomeView.tsx,src/App.tsx,src/ordersTypes.ts
+alwaysApply: false
+---
+
+# Khiếu nại storefront → Admin «Đơn hàng khiếu nại»
+
+## Quy tắc bắt buộc
+
+Khi người mua bấm **Khiếu nại** trên **Đơn hàng đã mua** (storefront) và **Gửi khiếu nại**:
+
+1. Cập nhật đơn trong **`allOrders`** (`App.tsx`) — một nguồn dữ liệu chung.
+2. Đặt `Order.status = 'Khiếu nại'`, `hasComplained = true`, `complaintReason`, `previousStatus`, `complaintStartedAtMs` (hiển thị Admin → Đơn hàng khiếu nại).
+3. Đơn phải xuất hiện ngay tại Admin sidebar **«Đơn hàng khiếu nại»** (`ComplaintOrdersView`, route `/admin/orders/complaints`).
+4. Badge sidebar (`complaintBadgeCount`) = số đơn `Khiếu nại` + `Tranh chấp`.
+
+## Storefront (người mua)
+
+- **Không** chuyển sang trang admin / không đổi tab lọc sau gửi (giữ tab đang chọn).
+- Dùng `patchOrderById` → `setAllOrders` trong `HomeView` (không chỉ map trong `myPurchasedOrders`).
+
+## Hủy khiếu nại
+
+- Trả `status` về `previousStatus` (thường `Tạm giữ tiền`), giữ `hasComplained: true`, xóa `complaintStartedAtMs` — **vẫn** được +3 ngày tạm giữ → `Hoàn thành` (`patchWhenCancellingComplaint`).
+- Đơn **rời** danh sách Đơn hàng khiếu nại (vì không còn status khiếu nại).
+- Storefront: icon khiếu nại + badge **1** (đã dùng 1 lần).
+
+## Hết hạn 3 ngày (không hủy khiếu nại)
+
+- `Khiếu nại` quá 3 ngày → tự `Thất bại` + `complaintAutoFailed` (`complaintAutoFail.ts`, tick `orderTimers.ts`).
+- Gửi khiếu nại: set `complaintStartedAtMs` qua `patchWhenEnteringComplaint`.
+
+## Tham chiếu code
+
+- `PurchasedOrdersView.tsx` → `confirmComplaint`, `applyComplaintPatch`, `patchOrderById`
+- `HomeView.tsx` → `patchOrderById` + `setAllOrders`
+- `App.tsx` → `allOrders`, `ComplaintOrdersView`, `complaintBadgeCount`
+
+## Tài liệu
+
+`docs/storefront-complaint-admin-sync.md`

@@ -1,0 +1,40 @@
+---
+description: Trạng thái đơn hàng sản phẩm storefront sau thanh toán — luôn Tạm giữ tiền
+globs: src/HomeView.tsx,src/ordersTypes.ts,src/storefront/**,src/PurchasedOrdersView.tsx,src/OrderDetailView.tsx
+alwaysApply: false
+---
+
+# Đơn sản phẩm storefront — trạng thái sau mua
+
+## Quy tắc bắt buộc
+
+Sau khi khách **thanh toán / mua hàng** thành công trên storefront (mục **sản phẩm**):
+
+- Trạng thái đơn (`Order.status`) **luôn là `Tạm giữ tiền`**, kể cả khi đã giao dòng kho vào `deliveredItems` cho người mua.
+- **Không** tự chuyển sang `Hoàn thành` ngay sau checkout chỉ vì đã trừ kho / có `deliveredItems`.
+- **Ví chỉ tạm giữ 3 ngày** — `Tạm giữ tiền` → tự `Hoàn thành` (kể cả sau **hủy khiếu nại**; `hasComplained` không chặn giải ngân).
+- Nút kiểm thử **+3 ngày** trên đơn `Tạm giữ tiền` (SP hoặc DV) → **`Hoàn thành`** ngay (mô phỏng hết 3 ngày tạm giữ).
+
+## Lý do nghiệp vụ
+
+Sàn **giữ tiền** để bảo vệ người mua khi sản phẩm có vấn đề (sai loại, không đăng nhập được, tranh chấp, v.v.). Tiền chỉ được giải phóng theo quy trình sàn (xác nhận, hết thời gian khiếu nại, v.v.) — không phải ngay khi giao file/tài khoản.
+
+## Phân biệt với giao hàng
+
+| Khía cạnh | Hành vi |
+|-----------|---------|
+| **Trạng thái đơn** | `Tạm giữ tiền` sau thanh toán |
+| **Kho người mua** | Vẫn có thể ghi `deliveredItems` và mở «Đi tới kho hàng» — giao sản phẩm ≠ hoàn tất đơn / giải phóng tiền |
+| **UI thành công** | Modal hiển thị trạng thái `Tạm giữ tiền`; nhắc tiền đang tạm giữ trên sàn |
+
+## Khi sửa code
+
+- `ProductDetailView` / `handleCheckoutPay` trong `HomeView.tsx`: `status: 'Tạm giữ tiền'` cho đơn `checkoutPaid` loại sản phẩm.
+- Không thêm logic `deliveredItems.length > 0 → Hoàn thành` ngay sau checkout.
+- Auto-complete: `src/storefront/escrowAutoComplete.ts` + interval trong `App.tsx`.
+
+## Tham chiếu
+
+- Tạo đơn: `HomeView.tsx` → `handleCheckoutPay`
+- Fulfillment kho: `src/storefront/fulfillPurchase.ts`
+- Type: `ordersTypes.ts` → `OrderStatus`

@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run:*)",
+      "Bash(ls -lh \"e:/cursor/github/123456/\"*.md)",
+      "Read(//e/cursor/github/**)"
+    ]
+  }
+}
