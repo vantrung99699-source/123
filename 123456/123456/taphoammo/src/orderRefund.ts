@@ -1,5 +1,9 @@
 import type { Order } from './ordersTypes';
 import { formatVnd, getOrderTotalAmountVnd, parsePriceToVndNumber } from './orderAmountDisplay';
+import {
+  isWarrantyReplacementOrder,
+  resolveWarrantyOfferQuantities,
+} from './storefront/warrantyOffer';
 
 export type RefundOfferStatus = 'pending_buyer' | 'accepted' | 'rejected';
 
@@ -38,6 +42,18 @@ export function getResolvedRefundVnd(order: Order): number {
 }
 
 export function getOrderRefundDisplay(order: Order): { main: string; sub?: string } {
+  if (isWarrantyReplacementOrder(order)) {
+    return { main: '—', sub: 'Đơn bảo hành — không hoàn tiền' };
+  }
+
+  const warrantyOffer = resolveWarrantyOfferQuantities(order);
+  if (warrantyOffer) {
+    return {
+      main: `Bảo hành ${warrantyOffer.offer}/${warrantyOffer.max} SP`,
+      sub: 'Chờ bạn xác nhận',
+    };
+  }
+
   const pending = order.refundOfferStatus === 'pending_buyer';
   const rejected = order.refundOfferStatus === 'rejected';
 

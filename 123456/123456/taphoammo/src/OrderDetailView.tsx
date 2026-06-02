@@ -1,4 +1,5 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { AnimatePresence, motion } from 'motion/react';
 import {
   ChevronLeft,
   AlertCircle,
@@ -6,11 +7,15 @@ import {
   Package,
   Search,
   Download,
+  Upload,
+  FileText,
   Copy,
   CheckSquare,
+  Square,
   User,
   Store,
-  CreditCard
+  CreditCard,
+  X,
 } from 'lucide-react';
 import type { Order } from './ordersTypes';
 import {
@@ -22,14 +27,56 @@ import {
 import { formatPreOrderDeadlineRemainingLabel } from './storefront/preOrderAutoFail';
 import { getOrderFailureReasonLabel, isOrderTimerAutoFailure } from './orderFailureLabel';
 import { getOrderRefundDisplay, hasPendingRefundOffer } from './orderRefund';
+import { parseDefectiveUploadText } from './storefront/defectiveItemUpload';
 
 interface OrderDetailViewProps {
   order: Order;
   onBack: () => void;
+  onReportDefectiveItems?: (orderId: string, itemIds: string[]) => void;
+  onUploadDefectiveItems?: (
+    orderId: string,
+    payload: { text: string }
+  ) => { matched: number; skipped: number } | void;
 }
 
-export const OrderDetailView = ({ order, onBack }: OrderDetailViewProps) => {
+const PAGE_SIZE = 25;
+
+type AccountRow = { uid: string; content: string; reported: boolean };
+
+function downloadAccountRows(
+  rows: AccountRow[],
+  orderId: string,
+  suffix: string
+) {
+  if (rows.length === 0) return;
+  const lines = rows.map(a => `${a.uid}|${a.content}`);
+  const blob = new Blob([lines.join('\n')], { type: 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `don-${orderId}-san-pham${suffix}.txt`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+export const OrderDetailView = ({
+  order,
+  onBack,
+  onReportDefectiveItems,
+  onUploadDefectiveItems,
+}: OrderDetailViewProps) => {
   const [search, setSearch] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [isReportModalOpen, setIsReportModalOpen] = useState(false);
+  const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
+  const [uploadText, setUploadText] = useState('');
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [reportSuccess, setReportSuccess] = useState(false);
+  const [uploadSuccess, setUploadSuccess] = useState<string | null>(null);
+
   const awaitingPreOrderDelivery = isPreOrderAwaitingFulfillment(order);
   const preOrderDeadlineHint = awaitingPreOrderDelivery
     ? formatPreOrderDeadlineRemainingLabel(order)
@@ -40,6 +87,7 @@ export const OrderDetailView = ({ order, onBack }: OrderDetailViewProps) => {
       return order.deliveredItems.map(item => ({
         uid: item.id,
         content: item.content,
+        reported: Boolean(item.buyerReportedDefective),
       }));
     }
     return [];
@@ -55,9 +103,122 @@ export const OrderDetailView = ({ order, onBack }: OrderDetailViewProps) => {
     );
   }, [accounts, search]);
 
-  const copyAll = () => {
-    const text = filteredAccounts.map(a => a.content).join('\n');
+  const knownUids = useMemo(() => new Set(accounts.map(a => a.uid)), [accounts]);
+
+  const filteredIds = useMemo(() => filteredAccounts.map(a => a.uid), [filteredAccounts]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredAccounts.length / PAGE_SIZE));
+  const safePage = Math.min(currentPage, totalPages);
+
+  const paginatedAccounts = useMemo(() => {
+    const start = (safePage - 1) * PAGE_SIZE;
+    return filteredAccounts.slice(start, start + PAGE_SIZE);
+  }, [filteredAccounts, safePage]);
+
+  const pageStart = filteredAccounts.length === 0 ? 0 : (safePage - 1) * PAGE_SIZE + 1;
+  const pageEnd = Math.min(safePage * PAGE_SIZE, filteredAccounts.length);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search]);
+
+  useEffect(() => {
+    if (currentPage > totalPages) setCurrentPage(totalPages);
+  }, [currentPage, totalPages]);
+
+  const toggleAccount = (uid: string) => {
+    setSelectedIds(prev =>
+      prev.includes(uid) ? prev.filter(id => id !== uid) : [...prev, uid]
+    );
+  };
+
+  const toggleAllFiltered = () => {
+    if (filteredIds.length === 0) return;
+    const allSelected = filteredIds.every(id => selectedIds.includes(id));
+    if (allSelected) {
+      setSelectedIds(prev => prev.filter(id => !filteredIds.includes(id)));
+    } else {
+      setSelectedIds(prev => [...new Set([...prev, ...filteredIds])]);
+    }
+  };
+
+  const selectedRows = useMemo(
+    () => accounts.filter(a => selectedIds.includes(a.uid)),
+    [accounts, selectedIds]
+  );
+
+  const copyPageOrSelected = () => {
+    const rows =
+      selectedIds.length > 0 ? selectedRows : paginatedAccounts;
+    const text = rows.map(a => a.content).join('\n');
     if (text) navigator.clipboard.writeText(text);
+  };
+
+  const copyAllOrder = () => {
+    const text = accounts.map(a => a.content).join('\n');
+    if (text) navigator.clipboard.writeText(text);
+  };
+
+  const downloadSelected = () => {
+    if (selectedRows.length === 0) return;
+    downloadAccountRows(selectedRows, order.id, '-da-chon');
+  };
+
+  const downloadAllOrder = () => {
+    downloadAccountRows(accounts, order.id, '-toan-bo');
+  };
+
+  const downloadCurrentPage = () => {
+    downloadAccountRows(paginatedAccounts, order.id, `-trang-${safePage}`);
+  };
+
+  const confirmReport = () => {
+    if (selectedIds.length === 0) return;
+    onReportDefectiveItems?.(order.id, selectedIds);
+    setIsReportModalOpen(false);
+    setSelectedIds([]);
+    setReportSuccess(true);
+    window.setTimeout(() => setReportSuccess(false), 4000);
+  };
+
+  const canReport = Boolean(onReportDefectiveItems) && accounts.length > 0;
+  const canUpload = Boolean(onUploadDefectiveItems) && accounts.length > 0;
+
+  const uploadPreview = useMemo(() => {
+    if (!uploadText.trim()) return { matched: 0, lines: [] as ReturnType<typeof parseDefectiveUploadText> };
+    const lines = parseDefectiveUploadText(uploadText, knownUids);
+    return { matched: lines.length, lines };
+  }, [uploadText, knownUids]);
+
+  const confirmUpload = () => {
+    if (!onUploadDefectiveItems) return;
+    const lines = parseDefectiveUploadText(uploadText, knownUids);
+    if (lines.length === 0) {
+      setUploadError('Không có UID trùng với đơn. Mỗi dòng: UID hoặc UID|nội dung tài khoản.');
+      return;
+    }
+    const totalLines = uploadText.split(/\r?\n/).filter(l => l.trim()).length;
+    const result = onUploadDefectiveItems(order.id, { text: uploadText });
+    const matched = result?.matched ?? lines.length;
+    const skipped = result?.skipped ?? Math.max(0, totalLines - matched);
+    setUploadError(null);
+    setIsUploadModalOpen(false);
+    setUploadText('');
+    setUploadSuccess(
+      `Đã tải ${matched} SP lỗi (khớp UID)${skipped > 0 ? ` · bỏ qua ${skipped} dòng không khớp` : ''}.`
+    );
+    window.setTimeout(() => setUploadSuccess(null), 5000);
+  };
+
+  const handleUploadFile = (file: File | null) => {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const text = typeof reader.result === 'string' ? reader.result : '';
+      setUploadText(text);
+      setUploadError(null);
+    };
+    reader.readAsText(file, 'utf-8');
   };
 
   return (
@@ -102,6 +263,16 @@ export const OrderDetailView = ({ order, onBack }: OrderDetailViewProps) => {
                     <span className="font-bold tabular-nums">{getOrderRefundDisplay(order).main}</span>
                     {getOrderRefundDisplay(order).sub ? ` (${getOrderRefundDisplay(order).sub})` : ''}. Vào
                     danh sách đơn đã mua để chấp nhận hoặc từ chối.
+                  </p>
+                )}
+                {reportSuccess && (
+                  <p className="text-[11px] font-semibold text-orange-800 bg-orange-50 border border-orange-200 rounded-lg px-3 py-2 mt-2 max-w-xl">
+                    Đã gửi báo lỗi. Người bán sẽ thấy sản phẩm lỗi trong kho đã bán.
+                  </p>
+                )}
+                {uploadSuccess && (
+                  <p className="text-[11px] font-semibold text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2 mt-2 max-w-xl">
+                    {uploadSuccess}
                   </p>
                 )}
               </div>
@@ -194,12 +365,33 @@ export const OrderDetailView = ({ order, onBack }: OrderDetailViewProps) => {
 
         {/* Extra buttons */}
         <div className="flex justify-end gap-3 mt-4 mb-2">
-          <button className="flex items-center gap-1.5 px-3 py-1.5 border border-slate-200 bg-white rounded-lg text-[12px] font-bold text-slate-500 hover:bg-slate-50 transition-colors">
+          <button
+            type="button"
+            disabled={!canReport || selectedIds.length === 0}
+            onClick={() => setIsReportModalOpen(true)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 border rounded-lg text-[12px] font-bold transition-colors ${
+              canReport && selectedIds.length > 0
+                ? 'border-orange-200 bg-orange-50 text-orange-600 hover:bg-orange-100'
+                : 'border-slate-200 bg-white text-slate-400 cursor-not-allowed'
+            }`}
+          >
             <Info size={14} />
-            Báo lỗi SP đã chọn
+            Báo lỗi SP đã chọn{selectedIds.length > 0 ? ` (${selectedIds.length})` : ''}
           </button>
-          <button className="flex items-center gap-1.5 px-3 py-1.5 border border-red-200 bg-white rounded-lg text-[12px] font-bold text-red-500 hover:bg-red-50 transition-colors">
-            <AlertCircle size={14} />
+          <button
+            type="button"
+            disabled={!canUpload}
+            onClick={() => {
+              setUploadError(null);
+              setIsUploadModalOpen(true);
+            }}
+            className={`flex items-center gap-1.5 px-3 py-1.5 border rounded-lg text-[12px] font-bold transition-colors ${
+              canUpload
+                ? 'border-red-200 bg-white text-red-500 hover:bg-red-50'
+                : 'border-slate-200 bg-white text-slate-400 cursor-not-allowed'
+            }`}
+          >
+            <Upload size={14} />
             Tải lên SP lỗi
           </button>
         </div>
@@ -233,22 +425,55 @@ export const OrderDetailView = ({ order, onBack }: OrderDetailViewProps) => {
                   className="pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-[13px] focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/30 w-[200px]"
                 />
               </div>
-              <button className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-slate-200 text-[12px] font-semibold text-slate-600 hover:bg-slate-50 transition-colors bg-white">
-                <Download size={14} className="text-slate-400" />
-                Tải đơn hàng
-              </button>
               <button
                 type="button"
-                onClick={copyAll}
-                className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-slate-200 text-[12px] font-semibold text-slate-600 hover:bg-slate-50 transition-colors bg-white"
+                onClick={downloadAllOrder}
+                disabled={accounts.length === 0}
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-emerald-600 text-white text-[12px] font-semibold hover:bg-emerald-700 transition-colors shadow-sm shadow-emerald-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Tải tất cả sản phẩm trong đơn (mọi trang)"
+              >
+                <Download size={14} />
+                Tải toàn bộ ({accounts.length})
+              </button>
+              {selectedIds.length > 0 && (
+                <button
+                  type="button"
+                  onClick={downloadSelected}
+                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-slate-200 text-[12px] font-semibold text-slate-600 hover:bg-slate-50 transition-colors bg-white"
+                >
+                  <Download size={14} className="text-slate-400" />
+                  Tải đã chọn ({selectedIds.length})
+                </button>
+              )}
+              {totalPages > 1 && selectedIds.length === 0 && (
+                <button
+                  type="button"
+                  onClick={downloadCurrentPage}
+                  disabled={paginatedAccounts.length === 0}
+                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-slate-200 text-[12px] font-semibold text-slate-600 hover:bg-slate-50 transition-colors bg-white disabled:opacity-50"
+                >
+                  <Download size={14} className="text-slate-400" />
+                  Tải trang {safePage}
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={copyPageOrSelected}
+                disabled={
+                  selectedIds.length === 0
+                    ? paginatedAccounts.length === 0
+                    : selectedRows.length === 0
+                }
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-slate-200 text-[12px] font-semibold text-slate-600 hover:bg-slate-50 transition-colors bg-white disabled:opacity-50"
               >
                 <Copy size={14} className="text-slate-400" />
-                Copy
+                {selectedIds.length > 0 ? 'Copy đã chọn' : 'Copy trang'}
               </button>
               <button
                 type="button"
-                onClick={copyAll}
-                className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-blue-600 text-white text-[12px] font-semibold hover:bg-blue-700 transition-colors shadow-sm shadow-blue-500/20"
+                onClick={copyAllOrder}
+                disabled={accounts.length === 0}
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-blue-600 text-white text-[12px] font-semibold hover:bg-blue-700 transition-colors shadow-sm shadow-blue-500/20 disabled:opacity-50"
               >
                 <Copy size={14} />
                 Copy toàn bộ
@@ -262,7 +487,20 @@ export const OrderDetailView = ({ order, onBack }: OrderDetailViewProps) => {
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-200">
                   <th className="px-4 py-3 w-12 text-center border border-slate-200">
-                    <input type="checkbox" className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500" />
+                    <button
+                      type="button"
+                      onClick={toggleAllFiltered}
+                      disabled={filteredIds.length === 0}
+                      className="inline-flex disabled:opacity-40"
+                      title="Chọn tất cả"
+                    >
+                      {filteredIds.length > 0 &&
+                      filteredIds.every(id => selectedIds.includes(id)) ? (
+                        <CheckSquare size={16} className="text-blue-600" />
+                      ) : (
+                        <Square size={16} className="text-slate-400" />
+                      )}
+                    </button>
                   </th>
                   <th className="px-4 py-3 text-[11px] font-bold text-slate-500 uppercase tracking-wider w-48 border border-slate-200">
                     UID
@@ -270,12 +508,15 @@ export const OrderDetailView = ({ order, onBack }: OrderDetailViewProps) => {
                   <th className="px-4 py-3 text-[11px] font-bold text-slate-500 uppercase tracking-wider border border-slate-200">
                     TÀI KHOẢN
                   </th>
+                  <th className="px-4 py-3 text-[11px] font-bold text-slate-500 uppercase tracking-wider w-28 border border-slate-200 text-center">
+                    Trạng thái
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200">
                 {filteredAccounts.length === 0 ? (
                   <tr>
-                    <td colSpan={3} className="px-4 py-8 text-center text-[13px] text-slate-500 border border-slate-200">
+                    <td colSpan={4} className="px-4 py-8 text-center text-[13px] text-slate-500 border border-slate-200">
                       {order.deliveredItems?.length
                         ? 'Không có dòng nào khớp tìm kiếm.'
                         : awaitingPreOrderDelivery
@@ -284,10 +525,31 @@ export const OrderDetailView = ({ order, onBack }: OrderDetailViewProps) => {
                     </td>
                   </tr>
                 ) : (
-                  filteredAccounts.map((acc, index) => (
-                    <tr key={`${acc.uid}-${index}`} className="hover:bg-blue-50/30 transition-colors">
-                      <td className="px-4 py-3.5 text-center border border-slate-200">
-                        <input type="checkbox" className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500" />
+                  paginatedAccounts.map((acc, index) => (
+                    <tr
+                      key={`${acc.uid}-${index}`}
+                      className={`hover:bg-blue-50/30 transition-colors ${selectedIds.includes(acc.uid) ? 'bg-blue-50/50' : ''} ${acc.reported ? 'bg-orange-50/30' : ''}`}
+                      onClick={() => toggleAccount(acc.uid)}
+                    >
+                      <td
+                        className="px-4 py-3.5 text-center border border-slate-200"
+                        onClick={e => e.stopPropagation()}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => toggleAccount(acc.uid)}
+                          className="inline-flex mx-auto"
+                          title={acc.reported ? 'Đã báo lỗi — vẫn chọn để tải' : 'Chọn dòng'}
+                        >
+                          {selectedIds.includes(acc.uid) ? (
+                            <CheckSquare
+                              size={16}
+                              className={acc.reported ? 'text-orange-600' : 'text-blue-600'}
+                            />
+                          ) : (
+                            <Square size={16} className="text-slate-300" />
+                          )}
+                        </button>
                       </td>
                       <td className="px-4 py-3.5 text-[13px] font-bold text-slate-700 font-mono border border-slate-200">
                         {acc.uid}
@@ -297,6 +559,15 @@ export const OrderDetailView = ({ order, onBack }: OrderDetailViewProps) => {
                           {acc.content}
                         </span>
                       </td>
+                      <td className="px-4 py-3.5 text-center border border-slate-200">
+                        {acc.reported ? (
+                          <span className="text-[10px] font-bold text-orange-600 bg-orange-50 px-2 py-0.5 rounded border border-orange-100">
+                            SP lỗi
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-medium text-slate-400">—</span>
+                        )}
+                      </td>
                     </tr>
                   ))
                 )}
@@ -305,21 +576,214 @@ export const OrderDetailView = ({ order, onBack }: OrderDetailViewProps) => {
           </div>
 
           {/* Footer Pagination */}
-          <div className="p-4 border-t border-slate-100 flex items-center justify-between bg-slate-50/50">
+          <div className="p-4 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3 bg-slate-50/50">
             <span className="text-[12px] text-slate-500 font-medium">
-              Hiển thị {filteredAccounts.length} / {order.quantity} sản phẩm
+              {filteredAccounts.length === 0
+                ? `0 / ${accounts.length} sản phẩm`
+                : `Hiển thị ${pageStart}–${pageEnd} / ${filteredAccounts.length} dòng${
+                    search.trim() ? '' : ` · ${accounts.length} SP trong đơn`
+                  }`}
             </span>
-            <div className="flex items-center gap-1">
-              <button className="px-3 py-1.5 rounded text-[12px] font-medium text-slate-500 hover:bg-slate-200 transition-colors disabled:opacity-50">
-                Previous
-              </button>
-              <button className="w-7 h-7 rounded flex items-center justify-center bg-blue-600 text-white text-[12px] font-bold shadow-sm shadow-blue-500/20">
-                1
-              </button>
-            </div>
+            {totalPages > 1 && (
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  disabled={safePage <= 1}
+                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                  className="px-3 py-1.5 rounded text-[12px] font-medium text-slate-600 hover:bg-slate-200 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  Trước
+                </button>
+                {Array.from({ length: totalPages }, (_, i) => i + 1)
+                  .filter(p => {
+                    if (totalPages <= 7) return true;
+                    if (p === 1 || p === totalPages) return true;
+                    return Math.abs(p - safePage) <= 1;
+                  })
+                  .map((p, idx, arr) => {
+                    const prev = arr[idx - 1];
+                    const showEllipsis = prev != null && p - prev > 1;
+                    return (
+                      <React.Fragment key={p}>
+                        {showEllipsis && (
+                          <span className="px-1 text-slate-400 text-xs">…</span>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => setCurrentPage(p)}
+                          className={`min-w-[28px] h-7 px-1.5 rounded flex items-center justify-center text-[12px] font-bold transition-colors ${
+                            p === safePage
+                              ? 'bg-blue-600 text-white shadow-sm shadow-blue-500/20'
+                              : 'text-slate-600 hover:bg-slate-200'
+                          }`}
+                        >
+                          {p}
+                        </button>
+                      </React.Fragment>
+                    );
+                  })}
+                <button
+                  type="button"
+                  disabled={safePage >= totalPages}
+                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                  className="px-3 py-1.5 rounded text-[12px] font-medium text-slate-600 hover:bg-slate-200 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  Sau
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>
+
+      <AnimatePresence>
+        {isReportModalOpen && (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsReportModalOpen(false)}
+              className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 12 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 12 }}
+              className="relative w-full max-w-md bg-white rounded-3xl shadow-2xl overflow-hidden"
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="p-6 text-center">
+                <div className="w-16 h-16 bg-orange-50 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <AlertCircle size={32} className="text-orange-500" />
+                </div>
+                <h3 className="text-xl font-bold text-slate-800 mb-2">Xác nhận báo lỗi</h3>
+                <p className="text-slate-500 text-sm leading-relaxed">
+                  Bạn chắc chắn muốn báo lỗi{' '}
+                  <span className="font-bold text-orange-600">{selectedIds.length}</span> sản phẩm?
+                  Người bán sẽ thấy trong <span className="font-bold">kho đã bán</span>.
+                </p>
+              </div>
+              <div className="p-4 bg-slate-50 flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setIsReportModalOpen(false)}
+                  className="flex-1 px-4 py-3 bg-white border border-slate-200 text-slate-600 rounded-2xl text-sm font-bold hover:bg-slate-100 transition-all"
+                >
+                  Hủy bỏ
+                </button>
+                <button
+                  type="button"
+                  onClick={confirmReport}
+                  className="flex-1 px-4 py-3 bg-orange-600 text-white rounded-2xl text-sm font-bold shadow-lg shadow-orange-500/20 hover:bg-orange-700 transition-all"
+                >
+                  Xác nhận báo lỗi
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+        {isUploadModalOpen && (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsUploadModalOpen(false)}
+              className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 12 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 12 }}
+              className="relative w-full max-w-lg bg-white rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="p-5 border-b border-slate-100 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="w-9 h-9 rounded-xl bg-red-50 text-red-600 flex items-center justify-center">
+                    <Upload size={18} />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-slate-900">Tải lên SP lỗi</h3>
+                    <p className="text-[11px] text-slate-500">Khớp theo cột UID — mỗi dòng một tài khoản</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsUploadModalOpen(false)}
+                  className="p-2 rounded-full hover:bg-slate-100 text-slate-400"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div className="p-5 space-y-4 overflow-y-auto flex-1">
+                <label className="flex flex-col items-center justify-center gap-2 p-6 border-2 border-dashed border-slate-200 rounded-2xl bg-slate-50/80 cursor-pointer hover:border-red-300 hover:bg-red-50/30 transition-colors">
+                  <FileText size={28} className="text-slate-400" />
+                  <span className="text-sm font-bold text-slate-700">Chọn file .txt</span>
+                  <span className="text-[11px] text-slate-500">UTF-8, mỗi dòng: UID hoặc UID|nội dung</span>
+                  <input
+                    type="file"
+                    accept=".txt,text/plain"
+                    className="sr-only"
+                    onChange={e => handleUploadFile(e.target.files?.[0] ?? null)}
+                  />
+                </label>
+
+                <div>
+                  <label
+                    htmlFor="defective-upload-text"
+                    className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1.5"
+                  >
+                    Hoặc dán nhiều tài khoản (mỗi dòng một dòng)
+                  </label>
+                  <textarea
+                    id="defective-upload-text"
+                    value={uploadText}
+                    onChange={e => {
+                      setUploadText(e.target.value);
+                      if (uploadError) setUploadError(null);
+                    }}
+                    rows={8}
+                    placeholder={'WH-123456|user|pass|...\nWH-789012\nhoặc chỉ UID nếu chỉ đánh dấu lỗi'}
+                    className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-[13px] font-mono text-slate-800 focus:outline-none focus:border-red-400 focus:ring-2 focus:ring-red-400/20 resize-y"
+                  />
+                </div>
+
+                {uploadPreview.matched > 0 && (
+                  <p className="text-[12px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-xl px-3 py-2">
+                    Sẽ áp dụng <b>{uploadPreview.matched}</b> UID trùng đơn (đánh dấu SP lỗi).
+                  </p>
+                )}
+                {uploadError && (
+                  <p className="text-[12px] font-semibold text-rose-600" role="alert">
+                    {uploadError}
+                  </p>
+                )}
+              </div>
+
+              <div className="p-4 bg-slate-50 flex gap-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setIsUploadModalOpen(false)}
+                  className="flex-1 px-4 py-3 bg-white border border-slate-200 text-slate-600 rounded-2xl text-sm font-bold hover:bg-slate-100"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="button"
+                  onClick={confirmUpload}
+                  disabled={uploadPreview.matched === 0}
+                  className="flex-1 px-4 py-3 bg-red-600 text-white rounded-2xl text-sm font-bold hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Xác nhận tải lên
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

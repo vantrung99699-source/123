@@ -19,6 +19,9 @@ export interface MessagePartnerProfile {
   avatarUrl?: string;
   lastOrderId?: string;
   lastProductName?: string;
+  lastOrderQuantity?: number;
+  lastOrderTotalAmount?: string;
+  lastOrderPurchaseDate?: string;
   orderCount: number;
 }
 
@@ -126,6 +129,9 @@ export function personaToPartnerProfile(partner: MessagingPersona): MessagePartn
     avatarUrl: partner.avatarUrl,
     lastOrderId: partner.demoOrderId,
     lastProductName: partner.demoProductName,
+    lastOrderQuantity: partner.demoOrderId ? 1 : undefined,
+    lastOrderTotalAmount: partner.demoOrderId ? '120.000đ' : undefined,
+    lastOrderPurchaseDate: partner.demoOrderId ? '01/01/2026 10:00' : undefined,
     orderCount: partner.demoOrderId ? 1 : 0,
   };
 }

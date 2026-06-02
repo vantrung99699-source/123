@@ -9,6 +9,16 @@ import { PAYMENT_HISTORY } from './data';
 import type { PaymentHistory } from './types';
 import type { Order, OrderStatus } from '../ordersTypes';
 import { ORDER_STATUS_BADGE_BASE, getOrderStatusStyle } from '../orderStatusBadge';
+import { buildSystemTransactionOverview } from './transactionSystemOverview';
+import {
+  BuyerRankingTable,
+  ResellerRankingTable,
+  SellerRankingTable,
+  SystemLedgerTable,
+  TransactionOverviewSummary,
+} from './TransactionOverviewPanels';
+
+type AdminTxTab = 'overview' | 'ledger' | 'buyers' | 'sellers' | 'resellers' | 'classic';
 
 const typeColors: Record<string, { bg: string; text: string }> = {
   'Nạp tiền': { bg: 'bg-emerald-50', text: 'text-emerald-600' },
@@ -179,6 +189,13 @@ export function PaymentHistoryView({
 }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState('Tất cả');
+  const [adminTab, setAdminTab] = useState<AdminTxTab>('overview');
+  const [ledgerRoleFilter, setLedgerRoleFilter] = useState<'all' | 'buyer' | 'seller' | 'reseller'>('all');
+
+  const systemOverview = useMemo(
+    () => (variant === 'all' ? buildSystemTransactionOverview(orders, extraRows) : null),
+    [variant, orders, extraRows]
+  );
 
   const derivedOrderHistory = useMemo<PaymentHistory[]>(() => {
     const out: PaymentHistory[] = [];
@@ -306,11 +323,105 @@ export function PaymentHistoryView({
           <p className="text-slate-500 text-sm">
             {variant === 'seller'
               ? 'Chỉ các khoản đang tạm giữ: Chờ xác nhận, Tạm giữ tiền, Khiếu nại, Tranh chấp (không hiển thị tiền đã về hẳn người bán).'
-              : 'Theo dõi toàn bộ giao dịch trên hệ thống'}
+              : 'Kiểm soát giao dịch người mua, người bán, Reseller — xếp hạng chi tiêu / doanh thu / hoa hồng và số dư ví'}
           </p>
         </div>
       </header>
 
+      {variant === 'all' && systemOverview ? (
+        <div className="mb-6 flex flex-wrap gap-2 bg-slate-100 p-1 rounded-xl w-fit max-w-full">
+          {(
+            [
+              ['overview', 'Tổng quan'],
+              ['ledger', 'Sổ giao dịch'],
+              ['buyers', 'Người mua'],
+              ['sellers', 'Người bán'],
+              ['resellers', 'Reseller'],
+              ['classic', 'Lịch sử chi tiết'],
+            ] as const
+          ).map(([id, label]) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => setAdminTab(id)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${
+                adminTab === id ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      ) : null}
+
+      {variant === 'all' && systemOverview && adminTab === 'overview' ? (
+        <>
+          <TransactionOverviewSummary overview={systemOverview} />
+          <div className="space-y-8">
+            <BuyerRankingTable buyers={systemOverview.buyers.slice(0, 15)} />
+            <SellerRankingTable sellers={systemOverview.sellers.slice(0, 15)} />
+            <ResellerRankingTable resellers={systemOverview.resellers.slice(0, 15)} />
+          </div>
+        </>
+      ) : null}
+
+      {variant === 'all' && systemOverview && adminTab === 'buyers' ? (
+        <BuyerRankingTable buyers={systemOverview.buyers} />
+      ) : null}
+
+      {variant === 'all' && systemOverview && adminTab === 'sellers' ? (
+        <SellerRankingTable sellers={systemOverview.sellers} />
+      ) : null}
+
+      {variant === 'all' && systemOverview && adminTab === 'resellers' ? (
+        <ResellerRankingTable resellers={systemOverview.resellers} />
+      ) : null}
+
+      {variant === 'all' && systemOverview && adminTab === 'ledger' ? (
+        <>
+          <div className="mb-4 flex flex-wrap items-center gap-3">
+            <div className="flex bg-slate-100 p-1 rounded-xl">
+              {(
+                [
+                  ['all', 'Tất cả vai trò'],
+                  ['buyer', 'Người mua'],
+                  ['seller', 'Người bán'],
+                  ['reseller', 'Reseller'],
+                ] as const
+              ).map(([id, label]) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => setLedgerRoleFilter(id)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                    ledgerRoleFilter === id ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <div className="relative flex-1 min-w-[200px] max-w-md">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+              <input
+                type="text"
+                placeholder="Tìm tài khoản, mã đơn, sản phẩm, đối tác..."
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                className="w-full pl-12 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500/20"
+              />
+            </div>
+          </div>
+          <SystemLedgerTable
+            rows={systemOverview.ledger}
+            roleFilter={ledgerRoleFilter}
+            searchQuery={searchQuery}
+          />
+        </>
+      ) : null}
+
+      {(variant !== 'all' || adminTab === 'classic') && (
+      <>
       <div className="mb-6 flex items-center gap-4">
         {variant === 'all' && (
         <div className="flex bg-slate-100 p-1 rounded-xl">
@@ -449,6 +560,8 @@ export function PaymentHistoryView({
           </table>
         </div>
       </section>
+      </>
+      )}
     </motion.div>
   );
 }

@@ -51,19 +51,24 @@ export function OrderReviewModal({
               <ProductReviewsContent
                 productName={order.productName}
                 showCatalogReviews={false}
+                separateEditButton
+                reviewSessionKey={order.id}
                 buyerReview={order.buyerReview}
                 buyerName={buyerDisplayName}
-                onSubmitReview={
-                  order.buyerReview
-                    ? undefined
-                    : (rating, comment) => {
-                        onSubmitReview(order.id, {
-                          rating,
-                          comment: comment.trim(),
-                          createdAtMs: Date.now(),
-                        });
-                      }
-                }
+                onSubmitReview={(rating, comment) => {
+                  const prev = order.buyerReview;
+                  onSubmitReview(order.id, {
+                    rating,
+                    comment: comment.trim(),
+                    createdAtMs: prev?.createdAtMs ?? Date.now(),
+                    ...(prev?.sellerReply
+                      ? {
+                          sellerReply: prev.sellerReply,
+                          sellerReplyAtMs: prev.sellerReplyAtMs,
+                        }
+                      : {}),
+                  });
+                }}
               />
             </div>
 

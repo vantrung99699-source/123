@@ -12,6 +12,8 @@ import {
   ShoppingBag,
   Store,
   ClipboardCheck,
+  Truck,
+  MessageSquareX,
   MessageSquare,
   CreditCard,
   Wallet,
@@ -34,6 +36,8 @@ interface AdminSidebarProps {
   notificationCount?: number;
   /** Số gian hàng + mặt hàng chờ duyệt (badge menu Quản lý gian hàng) */
   pendingGianHangCount?: number;
+  complaintOrderCount?: number;
+  pendingPreOrderCount?: number;
 }
 
 interface MenuItem {
@@ -47,8 +51,12 @@ interface MenuItem {
 const MENU_ITEMS: MenuItem[] = [
   { id: 'statistics', icon: LayoutDashboard, label: 'Thống kê' },
   { id: 'users', icon: Users, label: 'Quản lý người dùng' },
-  { id: 'sales', icon: ShoppingBag, label: 'Quản lý bán hàng' },
   { id: 'gian-hang-approval', icon: ClipboardCheck, label: 'Quản lý gian hàng' },
+  { id: 'sales', icon: ShoppingBag, label: 'Quản lý bán hàng' },
+  { divider: true, id: 'product-orders' as AdminView, icon: ShoppingBag, label: '' },
+  { id: 'product-orders', icon: ShoppingBag, label: 'Đơn hàng sản phẩm' },
+  { id: 'service-orders', icon: Truck, label: 'Đơn hàng dịch vụ' },
+  { id: 'complaint-orders', icon: MessageSquareX, label: 'Đơn hàng khiếu nại' },
   { id: 'top-stores', icon: Store, label: 'Gian hàng Top 1' },
   { divider: true, id: 'messages' as AdminView, icon: MessageSquare, label: '' },
   { id: 'messages', icon: MessageSquare, label: 'Quản lý nhắn tin' },
@@ -115,6 +123,8 @@ export function AdminSidebar({
   onViewChange,
   notificationCount = 0,
   pendingGianHangCount = 0,
+  complaintOrderCount = 0,
+  pendingPreOrderCount = 0,
 }: AdminSidebarProps) {
   const navigate = useNavigate();
   const [isCollapsed, setIsCollapsed] = useState(false);
@@ -207,7 +217,11 @@ export function AdminSidebar({
               ? { ...item, badge: notificationCount }
               : item.id === 'gian-hang-approval'
                 ? { ...item, badge: pendingGianHangCount }
-                : item;
+                : item.id === 'complaint-orders'
+                  ? { ...item, badge: complaintOrderCount }
+                  : item.id === 'product-orders'
+                    ? { ...item, badge: pendingPreOrderCount }
+                    : item;
           return (
             <SidebarItem
               item={itemForRow}

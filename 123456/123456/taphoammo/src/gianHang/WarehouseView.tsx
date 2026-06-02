@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   ChevronLeft,
@@ -21,16 +21,27 @@ import {
   X,
   FileText,
   Code,
+  AlertCircle,
 } from 'lucide-react';
 import { StatusBadge } from './CategorySection';
 import { formatGianHangDisplayDate } from './categorySectionUtils';
 import type { Category, Product, WarehouseItem } from './types';
+import type { Order } from '../ordersTypes';
+import {
+  getSellerSoldWarehouseEntries,
+  syncSellerSoldWarehouseFromOrders,
+  type SellerSoldWarehouseEntry,
+} from '../storefront/sellerSoldWarehouse';
+
+const SOLD_WAREHOUSE_STORAGE_KEY = 'taphoammo_seller_sold_warehouse_v1';
 
 export interface WarehouseViewProps {
   product: Product;
   category: Category;
   onBack: () => void;
   onUpdateProduct: (product: Product) => void;
+  /** Đồng bộ tab Kho đã bán từ đơn thật (storefront + panel seller). */
+  orders?: Order[];
 }
 
 export function WarehouseView({
@@ -38,6 +49,7 @@ export function WarehouseView({
   category,
   onBack,
   onUpdateProduct,
+  orders = [],
 }: WarehouseViewProps) {
   const [search, setSearch] = useState('');
   const [selectedItems, setSelectedItems] = useState<string[]>([]);
@@ -45,11 +57,50 @@ export function WarehouseView({
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [addMethod, setAddMethod] = useState<'single' | 'multiple' | 'file' | 'api'>('single');
   const [newContent, setNewContent] = useState('');
+  const [warehouseTab, setWarehouseTab] = useState<'stock' | 'sold'>('stock');
+  const [soldRevision, setSoldRevision] = useState(0);
+
+  useEffect(() => {
+    const bump = () => setSoldRevision(r => r + 1);
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === SOLD_WAREHOUSE_STORAGE_KEY) bump();
+    };
+    window.addEventListener('storage', onStorage);
+    window.addEventListener('focus', bump);
+    return () => {
+      window.removeEventListener('storage', onStorage);
+      window.removeEventListener('focus', bump);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (warehouseTab !== 'sold' || orders.length === 0) return;
+    syncSellerSoldWarehouseFromOrders(product.id, orders);
+    setSoldRevision(r => r + 1);
+  }, [warehouseTab, product.id, orders]);
 
   const items = product.warehouseItems || [];
+  const soldEntries = useMemo(
+    () => getSellerSoldWarehouseEntries(product.id),
+    [product.id, soldRevision]
+  );
+  const soldDefectiveCount = soldEntries.filter(e => e.buyerReportedDefective).length;
+
   const filteredItems = items.filter(item => 
     item.id.toLowerCase().includes(search.toLowerCase()) || 
     item.content.toLowerCase().includes(search.toLowerCase())
+  );
+
+  const filteredSoldEntries = soldEntries.filter(
+    (entry: SellerSoldWarehouseEntry) => {
+      const q = search.toLowerCase();
+      return (
+        entry.id.toLowerCase().includes(q) ||
+        entry.content.toLowerCase().includes(q) ||
+        entry.orderId.toLowerCase().includes(q) ||
+        entry.buyerName.toLowerCase().includes(q)
+      );
+    }
   );
 
   const toggleSelectAll = () => {
@@ -256,24 +307,68 @@ export function WarehouseView({
 
       {/* Warehouse Items Section */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="p-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+        <div className="p-4 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-blue-100 text-blue-600 rounded-xl flex items-center justify-center">
               <ShoppingBag size={20} />
             </div>
             <div>
-              <h3 className="text-base font-bold text-slate-900 font-display">Danh sách sản phẩm trong kho</h3>
-              <p className="text-[10px] text-slate-500 font-medium">Quản lý nội dung tài khoản, mã code hoặc dữ liệu bán hàng</p>
+              <h3 className="text-base font-bold text-slate-900 font-display">
+                {warehouseTab === 'stock' ? 'Kho tồn' : 'Kho đã bán'}
+              </h3>
+              <p className="text-[10px] text-slate-500 font-medium">
+                {warehouseTab === 'stock'
+                  ? 'Quản lý nội dung tài khoản, mã code hoặc dữ liệu bán hàng'
+                  : 'Sản phẩm đã giao — khách báo lỗi hiển thị nhãn SP lỗi'}
+              </p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <button 
-              onClick={() => setIsAddModalOpen(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-xl text-xs font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-500/20"
-            >
-              <Plus size={16} />
-              Thêm sản phẩm mới
-            </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="inline-flex p-1 bg-white border border-slate-200 rounded-xl">
+              <button
+                type="button"
+                onClick={() => setWarehouseTab('stock')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${
+                  warehouseTab === 'stock'
+                    ? 'bg-blue-600 text-white shadow-sm'
+                    : 'text-slate-600 hover:bg-slate-50'
+                }`}
+              >
+                Kho tồn ({items.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setWarehouseTab('sold');
+                  setSoldRevision(r => r + 1);
+                }}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors inline-flex items-center gap-1.5 ${
+                  warehouseTab === 'sold'
+                    ? 'bg-blue-600 text-white shadow-sm'
+                    : 'text-slate-600 hover:bg-slate-50'
+                }`}
+              >
+                Kho đã bán ({soldEntries.length})
+                {soldDefectiveCount > 0 && (
+                  <span
+                    className={`min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-extrabold flex items-center justify-center ${
+                      warehouseTab === 'sold' ? 'bg-orange-400 text-white' : 'bg-orange-100 text-orange-700'
+                    }`}
+                  >
+                    {soldDefectiveCount}
+                  </span>
+                )}
+              </button>
+            </div>
+            {warehouseTab === 'stock' && (
+              <button 
+                onClick={() => setIsAddModalOpen(true)}
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-xl text-xs font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-500/20"
+              >
+                <Plus size={16} />
+                Thêm sản phẩm mới
+              </button>
+            )}
           </div>
         </div>
 
@@ -285,12 +380,16 @@ export function WarehouseView({
               type="text" 
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Tìm kiếm theo ID hoặc nội dung..." 
+              placeholder={
+                warehouseTab === 'stock'
+                  ? 'Tìm kiếm theo ID hoặc nội dung...'
+                  : 'Tìm theo ID, đơn, người mua...'
+              }
               className="w-full pl-10 pr-4 py-2.5 bg-slate-100/80 border border-slate-200/50 rounded-xl text-sm font-medium focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-500/5 transition-all outline-none"
             />
           </div>
           <div className="flex items-center gap-2">
-            {selectedItems.length > 0 && (
+            {warehouseTab === 'stock' && selectedItems.length > 0 && (
               <>
                 <button 
                   onClick={handleCopySelected}
@@ -315,7 +414,7 @@ export function WarehouseView({
                 </button>
               </>
             )}
-            {selectedItems.length === 0 && items.length > 0 && (
+            {warehouseTab === 'stock' && selectedItems.length === 0 && items.length > 0 && (
               <>
                 <button 
                   onClick={handleCopySelected}
@@ -333,17 +432,97 @@ export function WarehouseView({
                 </button>
               </>
             )}
-            <button 
-              onClick={handleDeleteAll}
-              className="flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-600 rounded-xl text-xs font-bold border border-slate-200 hover:bg-slate-200 transition-all"
-            >
-              <Trash2 size={14} />
-              Xóa tất cả
-            </button>
+            {warehouseTab === 'stock' && (
+              <button 
+                onClick={handleDeleteAll}
+                className="flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-600 rounded-xl text-xs font-bold border border-slate-200 hover:bg-slate-200 transition-all"
+              >
+                <Trash2 size={14} />
+                Xóa tất cả
+              </button>
+            )}
           </div>
         </div>
 
         {/* Table */}
+        {warehouseTab === 'sold' ? (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse min-w-[920px]">
+              <thead>
+                <tr className="bg-slate-50/50 border-b border-slate-200">
+                  <th className="py-4 px-4 text-[11px] font-bold text-slate-600 uppercase border-r border-slate-200 w-28">
+                    Trạng thái
+                  </th>
+                  <th className="py-4 px-4 text-[11px] font-bold text-slate-600 uppercase border-r border-slate-200 w-32">
+                    Mã đơn
+                  </th>
+                  <th className="py-4 px-4 text-[11px] font-bold text-slate-600 uppercase border-r border-slate-200 w-36">
+                    Người mua
+                  </th>
+                  <th className="py-4 px-4 text-[11px] font-bold text-slate-600 uppercase border-r border-slate-200 w-36">
+                    ID SP
+                  </th>
+                  <th className="py-4 px-4 text-[11px] font-bold text-slate-600 uppercase border-r border-slate-200">
+                    Nội dung
+                  </th>
+                  <th className="py-4 px-4 text-[11px] font-bold text-slate-600 uppercase text-right w-40">
+                    Thời gian
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {filteredSoldEntries.map(entry => (
+                  <tr
+                    key={`${entry.orderId}-${entry.id}`}
+                    className={
+                      entry.buyerReportedDefective
+                        ? 'bg-orange-50/60 hover:bg-orange-50'
+                        : 'hover:bg-slate-50/50'
+                    }
+                  >
+                    <td className="py-4 px-4 border-r border-slate-100 align-middle">
+                      {entry.buyerReportedDefective ? (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-orange-700 bg-orange-100 px-2 py-1 rounded-lg border border-orange-200">
+                          <AlertCircle size={12} />
+                          SP lỗi
+                        </span>
+                      ) : (
+                        <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-1 rounded-lg border border-slate-200">
+                          Đã bán
+                        </span>
+                      )}
+                    </td>
+                    <td className="py-4 px-4 text-xs font-mono font-bold text-blue-600 border-r border-slate-100">
+                      {entry.orderId}
+                    </td>
+                    <td className="py-4 px-4 text-xs font-semibold text-slate-700 border-r border-slate-100">
+                      {entry.buyerName}
+                    </td>
+                    <td className="py-4 px-4 text-[10px] font-mono text-slate-600 border-r border-slate-100 truncate max-w-[140px]">
+                      {entry.id}
+                    </td>
+                    <td className="py-4 px-4 text-xs text-slate-600 font-mono border-r border-slate-100">
+                      <span className="block max-h-16 overflow-hidden">{entry.content}</span>
+                    </td>
+                    <td className="py-4 px-4 text-[10px] text-slate-400 text-right tabular-nums">
+                      {entry.time}
+                    </td>
+                  </tr>
+                ))}
+                {filteredSoldEntries.length === 0 && (
+                  <tr>
+                    <td colSpan={6} className="py-12 text-center">
+                      <div className="flex flex-col items-center gap-2 text-slate-400">
+                        <Package size={40} className="opacity-20" />
+                        <p className="text-sm font-medium">Chưa có sản phẩm trong kho đã bán</p>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse min-w-[920px]">
             <colgroup>
@@ -467,11 +646,14 @@ export function WarehouseView({
             </tbody>
           </table>
         </div>
+        )}
 
         {/* Pagination */}
         <div className="p-4 bg-slate-50/50 border-t border-slate-200 flex items-center justify-between">
           <div className="text-xs text-slate-500 font-medium">
-            Showing 1-{filteredItems.length} of {filteredItems.length} products
+            {warehouseTab === 'sold'
+              ? `Hiển thị ${filteredSoldEntries.length} / ${soldEntries.length} đã bán${soldDefectiveCount > 0 ? ` · ${soldDefectiveCount} SP lỗi` : ''}`
+              : `Hiển thị ${filteredItems.length} / ${items.length} trong kho tồn`}
           </div>
           <div className="flex items-center gap-1">
             <button className="px-3 py-1.5 text-xs font-bold text-slate-400 hover:text-slate-600 transition-colors">Previous</button>

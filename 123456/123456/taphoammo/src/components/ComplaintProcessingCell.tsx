@@ -1,6 +1,7 @@
 import type { Order } from '../ordersTypes';
 import { formatVnd } from '../orderAmountDisplay';
 import { computePartialRefundVnd, getOrderRefundDisplay } from '../orderRefund';
+import { hasPendingWarrantyOffer } from '../storefront/warrantyOffer';
 
 export interface ComplaintResolveDraft {
   resolveAction: 'cancel' | 'warranty' | 'dispute';
@@ -44,6 +45,23 @@ export function getComplaintAdminProcessing(
       };
     }
     return { title: 'Đang xử lý — tranh chấp', tone: 'draft' };
+  }
+
+  if (hasPendingWarrantyOffer(order)) {
+    const qty = order.warrantyOfferQuantity ?? order.quantity;
+    return {
+      title: 'Đã gửi — chờ khách',
+      detail: `Bảo hành ${qty}/${order.quantity} SP`,
+      tone: 'pending',
+    };
+  }
+
+  if (order.warrantyOfferStatus === 'rejected') {
+    return {
+      title: 'Khách từ chối bảo hành',
+      detail: 'Cần xử lý lại',
+      tone: 'rejected',
+    };
   }
 
   if (order.refundOfferStatus === 'pending_buyer') {
@@ -93,5 +111,10 @@ export function ComplaintProcessingCell({
 
 export function isComplaintRowHighlighted(order: Order, draft: ComplaintResolveDraft | null): boolean {
   if (draft) return true;
-  return order.refundOfferStatus === 'pending_buyer' || order.refundOfferStatus === 'rejected';
+  return (
+    order.refundOfferStatus === 'pending_buyer' ||
+    order.refundOfferStatus === 'rejected' ||
+    order.warrantyOfferStatus === 'pending_buyer' ||
+    order.warrantyOfferStatus === 'rejected'
+  );
 }

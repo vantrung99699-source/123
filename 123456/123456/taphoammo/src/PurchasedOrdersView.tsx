@@ -22,6 +22,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import type { Order } from './ordersTypes';
 import { patchWhenCancellingComplaint, patchWhenEnteringComplaint } from './storefront/complaintAutoFail';
+import { sendComplaintAutoMessageToSeller } from './storefront/complaintAutoSellerMessage';
 import { fastForwardOrderTimeThreeDays, getFastForwardResultMessage } from './storefront/orderTimers';
 import { OrderStatusCell } from './components/OrderStatusCell';
 import { isPreOrderAwaitingFulfillment } from './orderStatusBadge';
@@ -29,6 +30,25 @@ import { OrderReviewModal } from './components/OrderReviewModal';
 import { OrderTotalAmountCell } from './components/OrderTotalAmountCell';
 import { OrderRefundCell } from './components/OrderRefundCell';
 import { getOrderRefundDisplay, hasPendingRefundOffer } from './orderRefund';
+import {
+  getPartialRefundAcceptPatch,
+  getPartialRefundRejectPatch,
+} from './storefront/buyerOfferResponses';
+import {
+  buildWarrantyAcceptResult,
+  buildWarrantyRejectPatch,
+  hasPendingWarrantyOffer,
+  resolveWarrantyOfferQuantities,
+} from './storefront/warrantyOffer';
+import {
+  appendBuyerActionReply,
+} from './storefront/sellerResolveBuyerMessage';
+import {
+  resolvePendingActionMessageForOrder,
+  updateThreadMessageActionStatus,
+} from './storefront/storefrontMessagesStorage';
+import { resolveBuyerSellerThreadIdFromOrder } from './storefront/storefrontMessageThreads';
+import { resolveBuyerOwnerEmailForOrder } from './storefront/resolveBuyerEmail';
 import type { OrderBuyerReview } from './ordersTypes';
 
 function canRateOrder(order: Order): boolean {
@@ -73,6 +93,12 @@ export const PurchasedOrdersView = ({
   statusFilter,
   onStatusFilterChange,
   buyerDisplayName = 'Khách',
+  onGianHangClick,
+  onNavigateToReviews,
+  onMessageSeller,
+  messagingOwnerEmail = '',
+  messagingLogin = '',
+  messagingDisplayName = '',
 }: {
   onOrderClick: (id: string) => void;
   orders: Order[];
@@ -88,6 +114,16 @@ export const PurchasedOrdersView = ({
   onStatusFilterChange?: (filter: string) => void;
   /** Tên hiển thị khi gửi đánh giá đơn. */
   buyerDisplayName?: string;
+  /** Ấn tên gian hàng (cột danh mục) → mở trang gian tương ứng. */
+  onGianHangClick?: (order: Order) => void;
+  /** Sau khi khách gửi đánh giá — mở mục Đánh giá (seller admin). */
+  onNavigateToReviews?: (order: Order) => void;
+  /** Mở trang nhắn tin với người bán (storefront). */
+  onMessageSeller?: (order: Order) => void;
+  /** Email lưu hội thoại (storefront). */
+  messagingOwnerEmail?: string;
+  messagingLogin?: string;
+  messagingDisplayName?: string;
 }) => {
   const isStatusFilterControlled = onStatusFilterChange != null;
   const [internalFilter, setInternalFilter] = useState(statusFilter ?? 'Tất cả');
@@ -122,10 +158,22 @@ export const PurchasedOrdersView = ({
   };
 
   const handleSubmitReview = (orderId: string, review: OrderBuyerReview) => {
-    applyOrderPatch(orderId, { buyerReview: review });
-    setReviewModalOrder(prev =>
-      prev && prev.id === orderId ? { ...prev, buyerReview: review } : prev
+    const existing = orders.find((o) => o.id === orderId)?.buyerReview;
+    const merged: OrderBuyerReview = {
+      ...review,
+      createdAtMs: existing?.createdAtMs ?? review.createdAtMs,
+      ...(existing?.sellerReply
+        ? { sellerReply: existing.sellerReply, sellerReplyAtMs: existing.sellerReplyAtMs }
+        : {}),
+    };
+    applyOrderPatch(orderId, { buyerReview: merged });
+    const patched = orders.find((o) => o.id === orderId);
+    setReviewModalOrder((prev) =>
+      prev && prev.id === orderId ? { ...prev, buyerReview: merged } : prev
     );
+    if (patched && onNavigateToReviews && !existing) {
+      onNavigateToReviews({ ...patched, buyerReview: merged });
+    }
   };
 
   const handleComplain = (orderId: string) => {
@@ -153,14 +201,25 @@ export const PurchasedOrdersView = ({
   const confirmComplaint = () => {
     if (!selectedOrderForComplaint || !complaintReason.trim()) return;
     const orderId = selectedOrderForComplaint.id;
+    const reason = complaintReason.trim();
     const source = orders.find(o => o.id === orderId) ?? selectedOrderForComplaint;
     applyComplaintPatch(
       orderId,
       patchWhenEnteringComplaint(source, {
         previousStatus: source.status,
         hasComplained: true,
-        complaintReason: complaintReason.trim(),
+        complaintReason: reason,
       })
+    );
+    sendComplaintAutoMessageToSeller(
+      messagingOwnerEmail,
+      source,
+      reason,
+      {
+        login: messagingLogin || buyerDisplayName,
+        displayName: messagingDisplayName || buyerDisplayName,
+        email: messagingOwnerEmail,
+      }
     );
     setIsComplaintModalOpen(false);
     setSelectedOrderForComplaint(null);
@@ -178,6 +237,19 @@ export const PurchasedOrdersView = ({
     applyComplaintPatch(orderId, patchWhenCancellingComplaint(order, restored));
   };
 
+  const markChatOfferResolved = (
+    order: Order,
+    kind: 'partial_refund' | 'warranty',
+    status: 'accepted' | 'rejected'
+  ) => {
+    const buyerEmail = resolveBuyerOwnerEmailForOrder(order, messagingOwnerEmail);
+    const threadId = resolveBuyerSellerThreadIdFromOrder(order);
+    if (!buyerEmail || !threadId) return;
+    const msg = resolvePendingActionMessageForOrder(buyerEmail, threadId, order.id, kind);
+    if (msg) updateThreadMessageActionStatus(buyerEmail, threadId, msg.id, status);
+    appendBuyerActionReply(buyerEmail, order, status === 'accepted', kind);
+  };
+
   const handleAcceptPartialRefund = (order: Order) => {
     const { main } = getOrderRefundDisplay(order);
     if (
@@ -188,11 +260,8 @@ export const PurchasedOrdersView = ({
     ) {
       return;
     }
-    applyOrderPatch(order.id, {
-      status: 'Thất bại',
-      refundOfferStatus: 'accepted',
-      failureKind: 'buyer_accepted_partial_refund',
-    });
+    applyOrderPatch(order.id, getPartialRefundAcceptPatch(order));
+    markChatOfferResolved(order, 'partial_refund', 'accepted');
   };
 
   const handleRejectPartialRefund = (order: Order) => {
@@ -204,12 +273,46 @@ export const PurchasedOrdersView = ({
     ) {
       return;
     }
-    applyOrderPatch(order.id, {
-      refundOfferStatus: 'rejected',
-      refund: '0đ',
-      partialRefundQuantity: undefined,
-      status: 'Khiếu nại',
-    });
+    applyOrderPatch(order.id, getPartialRefundRejectPatch());
+    markChatOfferResolved(order, 'partial_refund', 'rejected');
+  };
+
+  const handleAcceptWarrantyOffer = (order: Order) => {
+    const offer = resolveWarrantyOfferQuantities(order, messagingOwnerEmail);
+    const qty = offer?.offer ?? order.warrantyOfferQuantity ?? order.quantity;
+    const maxQ = offer?.max ?? order.quantity;
+    if (
+      typeof window !== 'undefined' &&
+      !window.confirm(`Chấp nhận bảo hành ${qty}/${maxQ} SP? Shop sẽ gửi đơn thay thế.`)
+    ) {
+      return;
+    }
+    const result = buildWarrantyAcceptResult(order, qty, orders);
+    if (!result) {
+      window.alert('Không thể tạo đơn bảo hành.');
+      return;
+    }
+    if (patchOrderById) {
+      patchOrderById(order.id, result.originalPatch);
+      setOrders(prev => [result.newOrder, ...prev]);
+    } else {
+      setOrders(prev => [
+        result.newOrder,
+        ...prev.map(o => (o.id === order.id ? { ...o, ...result.originalPatch } : o)),
+      ]);
+    }
+    markChatOfferResolved(order, 'warranty', 'accepted');
+  };
+
+  const handleRejectWarrantyOffer = (order: Order) => {
+    if (
+      typeof window !== 'undefined' &&
+      !window.confirm('Từ chối đề xuất bảo hành? Đơn vẫn khiếu nại — shop có thể xử lý lại.')
+    ) {
+      return;
+    }
+    applyOrderPatch(order.id, buildWarrantyRejectPatch());
+    markChatOfferResolved(order, 'warranty', 'rejected');
   };
 
   const handleCancelOrder = (orderId: string) => {
@@ -364,8 +467,10 @@ export const PurchasedOrdersView = ({
                     <div className="flex items-center gap-1.5">
                       <button
                         type="button"
-                        className="p-1.5 text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 transition-all"
-                        title="Nhắn tin"
+                        onClick={() => onMessageSeller?.(order)}
+                        disabled={!onMessageSeller}
+                        className="p-1.5 text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                        title="Nhắn tin với người bán"
                       >
                         <MessageCircle size={14} />
                       </button>
@@ -446,6 +551,28 @@ export const PurchasedOrdersView = ({
                         </>
                       )}
 
+                      {(hasPendingWarrantyOffer(order) ||
+                        resolveWarrantyOfferQuantities(order, messagingOwnerEmail)) && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => handleAcceptWarrantyOffer(order)}
+                            className="p-1.5 text-emerald-700 bg-emerald-50 rounded-lg hover:bg-emerald-100 transition-all border border-emerald-200/80"
+                            title="Chấp nhận bảo hành"
+                          >
+                            <Check size={14} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleRejectWarrantyOffer(order)}
+                            className="p-1.5 text-rose-700 bg-rose-50 rounded-lg hover:bg-rose-100 transition-all border border-rose-200/80"
+                            title="Từ chối bảo hành"
+                          >
+                            <X size={14} />
+                          </button>
+                        </>
+                      )}
+
                       {order.status === 'Tạm giữ tiền' && !isPreOrderAwaitingFulfillment(order) && (
                         <>
                           {canSubmitComplaint(order) ? (
@@ -476,35 +603,6 @@ export const PurchasedOrdersView = ({
                         >
                           {order.id}
                         </span>
-                        {order.warrantedFromId && (
-                          <span className="text-[10px] text-rose-500 font-bold italic mt-0.5">
-                            đơn hàng bảo hành từ đơn (
-                            <span
-                              className="underline cursor-pointer"
-                              onClick={() => onOrderClick(order.warrantedFromId!)}
-                            >
-                              xem ngay
-                            </span>
-                            )
-                          </span>
-                        )}
-                        {order.isWarrantyProcessed && (
-                          <span className="text-[10px] text-amber-600 font-bold italic mt-0.5">
-                            đơn hàng đã hỗ trợ bảo hành{' '}
-                            {order.warrantedToId && (
-                              <>
-                                ( mã đơn :
-                                <span
-                                  className="underline cursor-pointer"
-                                  onClick={() => onOrderClick(order.warrantedToId!)}
-                                >
-                                  {order.warrantedToId}
-                                </span>
-                                )
-                              </>
-                            )}
-                          </span>
-                        )}
                       </div>
                       <span className="text-xs text-slate-600 font-bold flex items-center gap-1 shrink-0 whitespace-nowrap">
                         <Calendar size={13} className="text-slate-500" /> {order.purchaseDate}
@@ -529,9 +627,20 @@ export const PurchasedOrdersView = ({
                             <Folder size={12} />
                           )}
                         </div>
-                        <span className="text-[10px] font-bold text-blue-600 hover:underline cursor-pointer transition-colors uppercase tracking-wider truncate block">
-                          {order.categoryName}
-                        </span>
+                        {onGianHangClick ? (
+                          <button
+                            type="button"
+                            onClick={() => onGianHangClick(order)}
+                            className="text-[10px] font-bold text-blue-600 hover:underline cursor-pointer transition-colors uppercase tracking-wider truncate block text-left max-w-full"
+                            title="Xem gian hàng"
+                          >
+                            {order.categoryName}
+                          </button>
+                        ) : (
+                          <span className="text-[10px] font-bold text-blue-600 uppercase tracking-wider truncate block">
+                            {order.categoryName}
+                          </span>
+                        )}
                       </div>
                       <div className="flex items-start gap-1.5">
                         <div className="w-5 h-5 rounded-md bg-blue-50 flex items-center justify-center text-blue-600 shrink-0 mt-0.5">
@@ -542,18 +651,9 @@ export const PurchasedOrdersView = ({
                         </span>
                       </div>
                       {order.warrantedFromId && (
-                        <div className="flex items-center gap-1 mt-1 ml-6.5">
-                          <span className="text-[10px] text-rose-500 font-bold italic">
-                            đơn hàng bảo hành từ đơn (
-                            <span
-                              className="underline cursor-pointer hover:text-rose-600"
-                              onClick={() => onOrderClick(order.warrantedFromId!)}
-                            >
-                              xem ngay
-                            </span>
-                            )
-                          </span>
-                        </div>
+                        <span className="text-[10px] text-rose-500 font-bold italic mt-1 ml-6.5 block">
+                          đơn hàng bảo hành
+                        </span>
                       )}
                       {order.isWarrantyProcessed && (
                         <div className="flex items-center gap-1 mt-1 ml-6.5">
@@ -589,7 +689,10 @@ export const PurchasedOrdersView = ({
                     <OrderTotalAmountCell order={order} />
                   </td>
                   <td className="py-4 px-4 border-r border-slate-300 text-center">
-                    <OrderRefundCell order={order} />
+                    <OrderRefundCell
+                      order={order}
+                      buyerOwnerEmail={resolveBuyerOwnerEmailForOrder(order, messagingOwnerEmail)}
+                    />
                   </td>
                   <td className="py-4 px-4 text-center">
                     <OrderStatusCell

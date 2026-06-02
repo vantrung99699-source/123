@@ -7,6 +7,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import {
   Settings,
   Package,
+  TrendingUp,
   Move,
   Filter,
   Search,
@@ -35,6 +36,9 @@ export type DanhMucFilterRow = {
   line: BusinessLine;
   kind: 'parent' | 'classification';
 };
+
+/** Lọc loại hình gian hàng — chỉ Admin Panel */
+export type GianHangBusinessLineFilter = 'Tất cả' | BusinessLine;
 
 export interface GianHangManagePanelProps {
   categories: Category[];
@@ -65,9 +69,17 @@ export interface GianHangManagePanelProps {
   onShowStats?: (product: Product) => void;
   onApproveCategory?: (categoryId: string) => void;
   onApproveProduct?: (productId: string) => void;
+  /** Admin Panel — đóng mặt hàng (Đã hủy). Không truyền từ shell người bán. */
+  onAdminCloseProduct?: (productId: string) => void;
+  /** Admin Panel — tạm ngưng mặt hàng. Không truyền từ shell người bán. */
+  onAdminSuspendProduct?: (productId: string) => void;
+  onAdminReopenProduct?: (productId: string) => void;
   onSwapProducts?: (categoryId: string, productIdA: string, productIdB: string) => void;
   /** Đổi thứ tự gian hàng con trong cùng danh mục cha */
   onSwapGianHang?: (parentId: string, gianHangIdA: string, gianHangIdB: string) => void;
+  /** Cuộn tới & highlight gian (từ đơn hàng / đánh giá). */
+  focusGianHangId?: string | null;
+  onFocusGianHangConsumed?: () => void;
 }
 
 export function GianHangManagePanel({
@@ -96,14 +108,21 @@ export function GianHangManagePanel({
   onShowStats,
   onApproveCategory,
   onApproveProduct,
+  onAdminCloseProduct,
+  onAdminSuspendProduct,
+  onAdminReopenProduct,
   onSwapProducts,
   onSwapGianHang,
+  focusGianHangId,
+  onFocusGianHangConsumed,
 }: GianHangManagePanelProps) {
   const productMoreMenuMode: ProductMoreMenuMode = showConfigToolbar ? 'admin' : 'seller';
   const [activeTab, setActiveTab] = useState(defaultActiveTab);
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('Tất cả gian hàng');
   const [platformFilter, setPlatformFilter] = useState('Tất cả danh mục');
+  /** Admin Panel — lọc gian SP / DV */
+  const [businessLineFilter, setBusinessLineFilter] = useState<GianHangBusinessLineFilter>('Tất cả');
   const [isPlatformFilterDropdownOpen, setIsPlatformFilterDropdownOpen] = useState(false);
   const [isQuickCreateMenuOpen, setIsQuickCreateMenuOpen] = useState(false);
   const quickCreateBtnRef = useRef<HTMLButtonElement>(null);
@@ -115,6 +134,27 @@ export function GianHangManagePanel({
   } | null>(null);
   const [quickCreateToast, setQuickCreateToast] = useState<string | null>(null);
   const [highlightGianHangId, setHighlightGianHangId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const id = focusGianHangId?.trim();
+    if (!id) return;
+    setActiveTab('Tất cả');
+    setCategoryFilter('Tất cả gian hàng');
+    setPlatformFilter('Tất cả danh mục');
+    setSearchQuery('');
+    setHighlightGianHangId(id);
+    const scrollTimer = window.setTimeout(() => {
+      document.getElementById(`gian-hang-card-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 120);
+    const clearTimer = window.setTimeout(() => {
+      setHighlightGianHangId(null);
+      onFocusGianHangConsumed?.();
+    }, 6000);
+    return () => {
+      window.clearTimeout(scrollTimer);
+      window.clearTimeout(clearTimer);
+    };
+  }, [focusGianHangId, onFocusGianHangConsumed]);
 
   const updateQuickCreateMenuPos = () => {
     const el = quickCreateBtnRef.current;
@@ -211,14 +251,28 @@ export function GianHangManagePanel({
     });
   }, [categories, classificationData, resolveBusinessLine]);
 
+  const effectiveBusinessLineFilter: GianHangBusinessLineFilter = showConfigToolbar
+    ? businessLineFilter
+    : 'Tất cả';
+
+  const danhMucFilterOptionsForToolbar = useMemo(() => {
+    if (effectiveBusinessLineFilter === 'Tất cả') return mergedDanhMucFilterOptions;
+    return mergedDanhMucFilterOptions.filter((o) => o.line === effectiveBusinessLineFilter);
+  }, [mergedDanhMucFilterOptions, effectiveBusinessLineFilter]);
+
+  const matchesBusinessLineFilter = (cat: Category): boolean => {
+    if (effectiveBusinessLineFilter === 'Tất cả') return true;
+    return resolveGianHangBusinessLine(cat) === effectiveBusinessLineFilter;
+  };
+
   useEffect(() => {
     if (platformFilter === 'Tất cả danh mục') return;
-    const valid = mergedDanhMucFilterOptions.some((o) => o.key === platformFilter);
+    const valid = danhMucFilterOptionsForToolbar.some((o) => o.key === platformFilter);
     if (!valid) {
       setPlatformFilter('Tất cả danh mục');
       setCategoryFilter('Tất cả gian hàng');
     }
-  }, [mergedDanhMucFilterOptions, platformFilter]);
+  }, [danhMucFilterOptionsForToolbar, platformFilter]);
 
   const parentsMatchingDanhMucFilter = useMemo(() => {
     return categories.filter((parent) => {
@@ -271,8 +325,10 @@ export function GianHangManagePanel({
 
   const subOptions = useMemo(
     () =>
-      parentsMatchingDanhMucFilter.flatMap((cat) => cat.subCategories || []),
-    [parentsMatchingDanhMucFilter]
+      parentsMatchingDanhMucFilter
+        .flatMap((cat) => cat.subCategories || [])
+        .filter((sub) => matchesBusinessLineFilter(sub)),
+    [parentsMatchingDanhMucFilter, effectiveBusinessLineFilter]
   );
 
   const activeDanhMucLine = useMemo((): BusinessLine | null => {
@@ -282,6 +338,7 @@ export function GianHangManagePanel({
 
   const displayedGianHangList = useMemo(() => {
     const filtered = visibleGianHangCategories
+      .filter((cat) => matchesBusinessLineFilter(cat))
       .filter(
         (cat) => categoryFilter === 'Tất cả gian hàng' || cat.name === categoryFilter
       )
@@ -310,7 +367,13 @@ export function GianHangManagePanel({
       if (tb !== ta) return tb - ta;
       return a.name.localeCompare(b.name, 'vi');
     });
-  }, [visibleGianHangCategories, categoryFilter, searchQuery, activeDanhMucLine]);
+  }, [
+    visibleGianHangCategories,
+    categoryFilter,
+    searchQuery,
+    activeDanhMucLine,
+    effectiveBusinessLineFilter,
+  ]);
 
   return (
     <div className="p-6 space-y-6 h-full overflow-y-auto">
@@ -375,6 +438,7 @@ export function GianHangManagePanel({
                 <option value="Tất cả">Tất cả</option>
                 <option value="Đang bán">Đang bán</option>
                 <option value="Tạm ngưng">Tạm ngưng</option>
+                <option value="Đóng">Đóng</option>
                 <option value="Chờ duyệt">
                   Chờ duyệt{pendingApprovalCount > 0 ? ` (${pendingApprovalCount})` : ''}
                 </option>
@@ -385,6 +449,53 @@ export function GianHangManagePanel({
               />
             </div>
           </div>
+
+          {showConfigToolbar && (
+            <div className="flex flex-col gap-1.5 w-52 shrink-0">
+              <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider ml-1">
+                Loại hình
+              </label>
+              <div className="relative group">
+                {businessLineFilter === 'Dịch vụ' ? (
+                  <TrendingUp
+                    className="absolute left-4 top-1/2 -translate-y-1/2 text-violet-500 transition-colors"
+                    size={16}
+                  />
+                ) : (
+                  <Package
+                    className={`absolute left-4 top-1/2 -translate-y-1/2 transition-colors ${
+                      businessLineFilter === 'Bán sản phẩm'
+                        ? 'text-emerald-600'
+                        : 'text-slate-400 group-focus-within:text-blue-500'
+                    }`}
+                    size={16}
+                  />
+                )}
+                <select
+                  value={businessLineFilter}
+                  onChange={(e) => {
+                    const next = e.target.value as GianHangBusinessLineFilter;
+                    setBusinessLineFilter(next);
+                    setCategoryFilter('Tất cả gian hàng');
+                    setPlatformFilter((prev) => {
+                      if (prev === 'Tất cả danh mục' || next === 'Tất cả') return prev;
+                      const row = mergedDanhMucFilterOptions.find((o) => o.key === prev);
+                      return row?.line === next ? prev : 'Tất cả danh mục';
+                    });
+                  }}
+                  className="w-full pl-11 pr-10 py-2.5 bg-slate-50 border border-slate-100 rounded-xl text-sm font-bold text-slate-700 appearance-none focus:bg-white focus:border-blue-500 transition-all outline-none cursor-pointer"
+                >
+                  <option value="Tất cả">Tất cả</option>
+                  <option value="Bán sản phẩm">Bán sản phẩm</option>
+                  <option value="Dịch vụ">Dịch vụ</option>
+                </select>
+                <ChevronDown
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
+                  size={14}
+                />
+              </div>
+            </div>
+          )}
 
           <div className="flex flex-col gap-1.5 flex-grow min-w-[280px]">
             <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider ml-1">
@@ -414,7 +525,11 @@ export function GianHangManagePanel({
                 <select
                   value={categoryFilter}
                   onChange={(e) => setCategoryFilter(e.target.value)}
-                  className="w-full pl-4 pr-10 py-2.5 bg-slate-50 border border-slate-100 rounded-l-xl text-sm font-bold text-slate-700 appearance-none focus:bg-white focus:border-blue-500 transition-all outline-none cursor-pointer border-r-0"
+                  className={`w-full pl-4 pr-10 py-2.5 bg-slate-50 border border-slate-100 text-sm font-bold text-slate-700 appearance-none focus:bg-white focus:border-blue-500 transition-all outline-none cursor-pointer ${
+                    showCreateGianHang && onCreateGianHang
+                      ? 'rounded-l-xl border-r-0'
+                      : 'rounded-xl'
+                  }`}
                 >
                   <option value="Tất cả gian hàng">Tất cả gian hàng</option>
                   {subOptions.map((sub) => (
@@ -505,7 +620,7 @@ export function GianHangManagePanel({
                           />
                           Tất cả danh mục
                         </button>
-                        {mergedDanhMucFilterOptions.map((row) => {
+                        {danhMucFilterOptionsForToolbar.map((row) => {
                           const platform = categories.find(
                             (c) => c.isParent && c.name === row.key
                           );
@@ -684,6 +799,9 @@ export function GianHangManagePanel({
                 onShowStats={onShowStats}
                 onApproveCategory={onApproveCategory}
                 onApproveProduct={onApproveProduct}
+                onAdminCloseProduct={showConfigToolbar ? onAdminCloseProduct : undefined}
+                onAdminSuspendProduct={showConfigToolbar ? onAdminSuspendProduct : undefined}
+                onAdminReopenProduct={showConfigToolbar ? onAdminReopenProduct : undefined}
                 onSwapProducts={onSwapProducts}
                 productMoreMenuMode={productMoreMenuMode}
                 platformParentId={parentId}

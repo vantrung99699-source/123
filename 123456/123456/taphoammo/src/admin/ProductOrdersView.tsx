@@ -33,6 +33,7 @@ export interface ProductOrdersViewProps {
   /** Trừ kho gian hàng và giao hàng cho đơn đặt trước. */
   onFulfillPreOrder?: (orderId: string) => { ok: boolean; message: string };
   defaultStatusFilter?: string;
+  onMessageBuyer?: (orderId: string) => void;
 }
 
 export function ProductOrdersView({
@@ -41,6 +42,7 @@ export function ProductOrdersView({
   setOrders,
   onFulfillPreOrder,
   defaultStatusFilter = 'Tất cả',
+  onMessageBuyer,
 }: ProductOrdersViewProps) {
   const [activeFilter, setActiveFilter] = useState(defaultStatusFilter);
   useEffect(() => {
@@ -101,7 +103,13 @@ export function ProductOrdersView({
         warrantedFromId: selectedOrderForWarranty.id,
         isWarrantyProcessed: false,
         hasComplained: false,
-        order_type: 'product'
+        order_type: 'product',
+        platformFee: '0đ',
+        platformFeePercent: 0,
+        reseller: undefined,
+        resellerReferrerEmail: undefined,
+        resellerPercent: undefined,
+        resellerFee: '0đ',
       };
 
       setOrders(prev => [
@@ -258,7 +266,13 @@ export function ProductOrdersView({
                 <tr key={order.id} className="hover:bg-slate-50/50 transition-colors group">
                   <td className="py-4 px-4 border-r border-slate-100">
                     <div className="flex items-center gap-2">
-                      <button className="p-2 text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 transition-all" title="Nhắn tin">
+                      <button
+                        type="button"
+                        onClick={() => onMessageBuyer?.(order.id)}
+                        disabled={!onMessageBuyer}
+                        className="p-2 text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                        title="Nhắn tin với khách"
+                      >
                         <MessageSquare size={14} />
                       </button>
                       {isPreOrderAwaitingFulfillment(order) && onFulfillPreOrder && (
@@ -360,7 +374,7 @@ export function ProductOrdersView({
                           )}
                           {order.warrantedFromId && (
                             <span className="text-[10px] text-rose-500 font-bold italic mt-0.5 block">
-                              đơn hàng bảo hành từ đơn ( <span className={`underline ${onOrderClick ? 'cursor-pointer' : ''}`} onClick={() => onOrderClick?.(order.warrantedFromId!)}>xem ngay</span> )
+                              đơn hàng bảo hành
                             </span>
                           )}
                           {order.isWarrantyProcessed && (

@@ -13,8 +13,16 @@ import {
   Tags,
   ChevronDown,
   ChevronUp,
+  ShieldAlert,
 } from 'lucide-react';
 import { CONVERSATIONS } from './data';
+import { MessageSensitiveContentTab } from './MessageSensitiveContentTab';
+import {
+  readSensitiveFilterSettings,
+  scanMessageForSensitive,
+} from './chatSensitiveFilter';
+
+type MessageAdminTab = 'conversations' | 'sensitive';
 
 const TAG_COLORS: Record<string, { bg: string; border: string; text: string }> = {
   'Cảnh báo': { bg: 'bg-amber-50', border: 'border-amber-100', text: 'text-amber-600' },
@@ -31,8 +39,10 @@ const ALL_TAGS = Object.keys(TAG_COLORS);
 const SCOPE_FILTERS = ['Tất cả', 'Khách - Khách', 'Khách - Admin'] as const;
 
 export function MessageManagementView() {
+  const [adminTab, setAdminTab] = useState<MessageAdminTab>('conversations');
   const [chats, setChats] = useState(CONVERSATIONS);
   const [selectedChatId, setSelectedChatId] = useState(CONVERSATIONS[0]?.id || '');
+  const [sensitiveSettings, setSensitiveSettings] = useState(() => readSensitiveFilterSettings());
   const [scopeFilter, setScopeFilter] = useState<(typeof SCOPE_FILTERS)[number]>('Tất cả');
   const [tagFilter, setTagFilter] = useState<string>('Tất cả');
   const [searchTerm, setSearchTerm] = useState('');
@@ -161,13 +171,53 @@ export function MessageManagementView() {
       exit={{ opacity: 0, y: -20 }}
       className="p-8 w-full h-full overflow-hidden flex flex-col"
     >
-      <header className="mb-6 flex items-center justify-between shrink-0">
+      <header className="mb-4 flex flex-wrap items-end justify-between gap-4 shrink-0">
         <div>
           <h2 className="text-2xl font-bold text-slate-900 mb-1">Quản lý nhắn tin</h2>
-          <p className="text-slate-500 text-sm">Theo dõi và quản lý hội thoại chat</p>
+          <p className="text-slate-500 text-sm">
+            {adminTab === 'conversations'
+              ? 'Theo dõi và quản lý hội thoại chat'
+              : 'Từ khóa & nội dung nhạy cảm — SĐT, liên hệ, Zalo, web ngoài, chơi chữ'}
+          </p>
+        </div>
+        <div className="flex bg-slate-100 p-1 rounded-xl">
+          <button
+            type="button"
+            onClick={() => setAdminTab('conversations')}
+            className={`px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2 ${
+              adminTab === 'conversations'
+                ? 'bg-white text-blue-600 shadow-sm'
+                : 'text-slate-500 hover:text-slate-700'
+            }`}
+          >
+            <MessageSquare size={14} />
+            Hội thoại
+          </button>
+          <button
+            type="button"
+            onClick={() => setAdminTab('sensitive')}
+            className={`px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2 ${
+              adminTab === 'sensitive'
+                ? 'bg-white text-rose-600 shadow-sm'
+                : 'text-slate-500 hover:text-slate-700'
+            }`}
+          >
+            <ShieldAlert size={14} />
+            Nội dung nhạy cảm
+          </button>
         </div>
       </header>
 
+      {adminTab === 'sensitive' ? (
+        <MessageSensitiveContentTab
+          chats={chats}
+          onSettingsChange={setSensitiveSettings}
+          onOpenConversation={chatId => {
+            setSelectedChatId(chatId);
+            setAdminTab('conversations');
+          }}
+        />
+      ) : (
       <div className="flex gap-6 flex-1 min-h-0">
         {/* Left: Conversation List */}
         <div className="w-80 bg-white rounded-3xl border border-slate-100 shadow-sm flex flex-col shrink-0">
@@ -453,6 +503,8 @@ export function MessageManagementView() {
               <div className="flex-1 overflow-y-auto p-6 space-y-4">
                 {selectedChat.messages.map((msg) => {
                   const senderLocked = (selectedChat.lockedParticipants ?? []).includes(msg.sender);
+                  const sensitiveHits = scanMessageForSensitive(msg.text, sensitiveSettings);
+                  const hasSensitive = sensitiveHits.length > 0;
                   return (
                     <div key={msg.id} className={`flex ${msg.isAdmin ? 'justify-end' : 'justify-start'}`}>
                       <div className={`max-w-[70%] ${msg.isAdmin ? 'order-2' : 'order-1'}`}>
@@ -461,10 +513,17 @@ export function MessageManagementView() {
                             msg.isAdmin
                               ? 'bg-blue-600 text-white rounded-br-md'
                               : 'bg-slate-100 text-slate-900 rounded-bl-md'
-                          } ${senderLocked ? 'ring-2 ring-amber-400/80 ring-offset-1' : ''}`}
+                          } ${senderLocked ? 'ring-2 ring-amber-400/80 ring-offset-1' : ''} ${
+                            hasSensitive ? 'ring-2 ring-rose-400/90 ring-offset-1' : ''
+                          }`}
                         >
-                          <div className="flex items-center justify-between gap-2 mb-1">
+                          <div className="flex items-center justify-between gap-2 mb-1 flex-wrap">
                             <p className="text-xs font-bold opacity-60">{msg.sender}</p>
+                            {hasSensitive && (
+                              <span className="flex items-center gap-0.5 text-[9px] font-bold uppercase text-rose-700 bg-rose-100 px-1.5 py-0.5 rounded-md">
+                                <ShieldAlert size={10} /> Nhạy cảm
+                              </span>
+                            )}
                             {senderLocked && (
                               <span className="flex items-center gap-0.5 text-[9px] font-bold uppercase text-amber-700 bg-amber-100/90 px-1.5 py-0.5 rounded-md">
                                 <Lock size={10} /> Khóa gửi
@@ -472,6 +531,11 @@ export function MessageManagementView() {
                             )}
                           </div>
                           <p>{msg.text}</p>
+                          {hasSensitive && (
+                            <p className="text-[10px] mt-2 opacity-80 font-semibold">
+                              Khớp: {sensitiveHits.map(h => h.label).join(', ')}
+                            </p>
+                          )}
                         </div>
                         <p className={`text-[10px] text-slate-400 mt-1 ${msg.isAdmin ? 'text-right' : 'text-left'}`}>{msg.time}</p>
                       </div>
@@ -536,6 +600,7 @@ export function MessageManagementView() {
           )}
         </div>
       </div>
+      )}
     </motion.div>
   );
 }

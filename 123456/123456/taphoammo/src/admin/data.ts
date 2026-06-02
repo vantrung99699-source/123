@@ -102,6 +102,39 @@ export const CONVERSATIONS: Conversation[] = [
     messages: [],
     notes: [],
   },
+  {
+    id: 'c4',
+    participants: ['Shop Via XMDT', 'buyer_demo_01'],
+    lastMessage: 'Ib zalo 0912 345 678 nhé',
+    time: '16-01',
+    unreadCount: 1,
+    tags: ['Nghi spam'],
+    status: 'Cảnh báo',
+    messages: [
+      {
+        id: 'm1',
+        sender: 'Shop Via XMDT',
+        text: 'Bạn add z.a.l.o mình giao nhanh hơn, lh ngoài sàn',
+        time: '09:10',
+        isAdmin: false,
+      },
+      {
+        id: 'm2',
+        sender: 'buyer_demo_01',
+        text: 'Ok, sdt shop là gì?',
+        time: '09:12',
+        isAdmin: false,
+      },
+      {
+        id: 'm3',
+        sender: 'Shop Via XMDT',
+        text: 'Ib zalo 0912 345 678 hoặc web shopviaxmdt.com',
+        time: '09:15',
+        isAdmin: false,
+      },
+    ],
+    notes: [],
+  },
 ];
 
 export const TOP_STORES: TopStore[] = [

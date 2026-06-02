@@ -4,8 +4,10 @@ import {
   useMemo,
   useRef,
   useState,
+  type Dispatch,
   type KeyboardEvent,
   type ReactNode,
+  type SetStateAction,
 } from 'react';
 import {
   ArrowLeft,
@@ -18,19 +20,37 @@ import {
   Store,
   User,
   ShoppingBag,
-  Mail,
-  AtSign,
-  Package,
   Search,
   X,
 } from 'lucide-react';
+import type { Order } from '../ordersTypes';
 import type { StorefrontAccountMode } from '../auth/roles';
 import {
   isStorefrontBuyerAccountMode,
   isStorefrontResellerAccountMode,
   isStorefrontSellerAccountMode,
 } from '../auth/roles';
+import { computePartialRefundVnd, getOrderRefundDisplay, hasPendingRefundOffer } from '../orderRefund';
+import { formatVnd } from '../orderAmountDisplay';
+import type { ChatMessageAction } from './messageActions';
+import {
+  getPartialRefundAcceptPatch,
+  getPartialRefundRejectPatch,
+} from './buyerOfferResponses';
+import {
+  buildWarrantyAcceptResult,
+  buildWarrantyRejectPatch,
+  hasPendingWarrantyOffer,
+} from './warrantyOffer';
+import { appendBuyerActionReply } from './sellerResolveBuyerMessage';
+import {
+  resolvePendingActionMessageForOrder,
+  updateThreadMessageActionStatus,
+} from './storefrontMessagesStorage';
+import { resolveBuyerSellerThreadIdFromOrder } from './storefrontMessageThreads';
+import { resolveBuyerOwnerEmailForOrder } from './resolveBuyerEmail';
 import type { MessageThreadSummary } from './storefrontMessageThreads';
+import type { MessagePartnerProfile } from './storefrontMessagingPersonas';
 import {
   getCurrentMessagingPersona,
   resolvePersonaById,
@@ -59,6 +79,22 @@ function accountModeLabel(mode: StorefrontAccountMode): string {
   return 'Tài khoản';
 }
 
+function buildLatestOrderLines(partner: MessagePartnerProfile): string[] {
+  const lines: string[] = [];
+  if (partner.lastOrderId) lines.push(partner.lastOrderId);
+  if (partner.lastProductName?.trim()) lines.push(partner.lastProductName.trim());
+  if (partner.lastOrderPurchaseDate?.trim()) {
+    lines.push(`Mua: ${partner.lastOrderPurchaseDate.trim()}`);
+  }
+  if (partner.lastOrderQuantity != null && partner.lastOrderQuantity > 0) {
+    lines.push(`SL: ${partner.lastOrderQuantity}`);
+  }
+  if (partner.lastOrderTotalAmount?.trim()) {
+    lines.push(`Tổng: ${partner.lastOrderTotalAmount.trim()}`);
+  }
+  return lines;
+}
+
 function partnerSubtitle(partner: MessageThreadSummary['partner']): string {
   if (partner.storeName) return partner.storeName;
   if (partner.loginName && partner.loginName !== partner.displayName) {
@@ -75,6 +111,10 @@ export interface StorefrontMessagesViewProps {
   selfDisplayName: string;
   threads: MessageThreadSummary[];
   initialThreadId?: string | null;
+  /** Đơn hàng — dùng nút đồng ý / từ chối trong tin nhắn (người mua). */
+  orders?: Order[];
+  patchOrderById?: (orderId: string, patch: Partial<Order>) => void;
+  setOrders?: Dispatch<SetStateAction<Order[]>>;
 }
 
 export function StorefrontMessagesView({
@@ -84,7 +124,11 @@ export function StorefrontMessagesView({
   selfDisplayName,
   threads,
   initialThreadId,
+  orders = [],
+  patchOrderById,
+  setOrders,
 }: StorefrontMessagesViewProps) {
+  const isBuyerMode = isStorefrontBuyerAccountMode(accountMode);
   const [activeThreadId, setActiveThreadId] = useState<string | null>(
     initialThreadId && threads.some(t => t.id === initialThreadId)
       ? initialThreadId
@@ -136,6 +180,166 @@ export function StorefrontMessagesView({
     setChatSearch('');
     setChatMatchCursor(0);
   }, [activeThread, ownerEmail, viewerPersona.id]);
+
+  const reloadMessages = useCallback(() => {
+    if (!activeThread) return;
+    setMessages(readThreadMessagesForViewer(ownerEmail, activeThread.id, viewerPersona.id));
+  }, [activeThread, ownerEmail, viewerPersona.id]);
+
+  useEffect(() => {
+    reloadMessages();
+  }, [orders, reloadMessages]);
+
+  const markChatOfferResolved = useCallback(
+    (order: Order, kind: 'partial_refund' | 'warranty', status: 'accepted' | 'rejected') => {
+      const buyerEmail = resolveBuyerOwnerEmailForOrder(order, ownerEmail);
+      const threadId = resolveBuyerSellerThreadIdFromOrder(order);
+      if (!buyerEmail || !threadId) return;
+      const msg = resolvePendingActionMessageForOrder(buyerEmail, threadId, order.id, kind);
+      if (msg) updateThreadMessageActionStatus(buyerEmail, threadId, msg.id, status);
+      appendBuyerActionReply(buyerEmail, order, status === 'accepted', kind);
+      reloadMessages();
+    },
+    [ownerEmail, reloadMessages]
+  );
+
+  const handleMessageOfferAction = useCallback(
+    (messageId: string, orderId: string, kind: 'partial_refund' | 'warranty', accept: boolean) => {
+      const msgAction = messages.find(m => m.id === messageId)?.action;
+      const order = orders.find(o => o.id === orderId);
+      if (!order || !activeThread) return;
+
+      if (kind === 'partial_refund') {
+        const pendingRefund =
+          hasPendingRefundOffer(order) ||
+          (msgAction?.kind === 'partial_refund' &&
+            msgAction.status === 'pending' &&
+            (msgAction.offerQuantity ?? 0) > 0);
+        if (!pendingRefund) return;
+        if (accept) {
+          let mainLabel: string;
+          if (hasPendingRefundOffer(order) || order.partialRefundQuantity != null) {
+            mainLabel = getOrderRefundDisplay(order).main;
+          } else if (msgAction?.refundAmountVnd != null) {
+            mainLabel = formatVnd(msgAction.refundAmountVnd);
+          } else if (msgAction?.offerQuantity != null) {
+            mainLabel = formatVnd(computePartialRefundVnd(order, msgAction.offerQuantity));
+          } else {
+            mainLabel = getOrderRefundDisplay(order).main;
+          }
+          if (
+            typeof window !== 'undefined' &&
+            !window.confirm(
+              `Chấp nhận hoàn ${mainLabel}? Đơn sẽ chuyển Thất bại và tiền về ví (nếu đã thanh toán).`
+            )
+          ) {
+            return;
+          }
+          if (patchOrderById) patchOrderById(orderId, getPartialRefundAcceptPatch(order));
+          else if (setOrders) {
+            setOrders(prev =>
+              prev.map(o => (o.id === orderId ? { ...o, ...getPartialRefundAcceptPatch(order) } : o))
+            );
+          }
+          markChatOfferResolved(order, 'partial_refund', 'accepted');
+        } else {
+          if (
+            typeof window !== 'undefined' &&
+            !window.confirm(
+              'Từ chối đề xuất hoàn một phần? Đơn vẫn ở trạng thái khiếu nại — shop sẽ xử lý lại.'
+            )
+          ) {
+            return;
+          }
+          if (patchOrderById) patchOrderById(orderId, getPartialRefundRejectPatch());
+          else if (setOrders) {
+            setOrders(prev =>
+              prev.map(o => (o.id === orderId ? { ...o, ...getPartialRefundRejectPatch() } : o))
+            );
+          }
+          updateThreadMessageActionStatus(
+            resolveBuyerOwnerEmailForOrder(order, ownerEmail),
+            activeThread.id,
+            messageId,
+            'rejected'
+          );
+          markChatOfferResolved(order, 'partial_refund', 'rejected');
+        }
+        return;
+      }
+
+      if (kind === 'warranty') {
+        const pendingWarranty =
+          hasPendingWarrantyOffer(order) ||
+          (msgAction?.kind === 'warranty' &&
+            msgAction.status === 'pending' &&
+            (msgAction.offerQuantity ?? 0) > 0);
+        if (!pendingWarranty) return;
+        if (accept) {
+          const qty = order.warrantyOfferQuantity ?? msgAction?.offerQuantity ?? order.quantity;
+          const maxQ = msgAction?.orderQuantity ?? order.quantity;
+          if (
+            typeof window !== 'undefined' &&
+            !window.confirm(
+              `Chấp nhận bảo hành ${qty}/${maxQ} SP? Shop sẽ gửi đơn thay thế.`
+            )
+          ) {
+            return;
+          }
+          const result = buildWarrantyAcceptResult(order, qty, orders);
+          if (!result) {
+            window.alert('Không thể tạo đơn bảo hành.');
+            return;
+          }
+          if (patchOrderById) {
+            patchOrderById(orderId, result.originalPatch);
+            setOrders?.(prev => [result.newOrder, ...prev]);
+          } else if (setOrders) {
+            setOrders(prev => [
+              result.newOrder,
+              ...prev.map(o => (o.id === orderId ? { ...o, ...result.originalPatch } : o)),
+            ]);
+          }
+          updateThreadMessageActionStatus(
+            resolveBuyerOwnerEmailForOrder(order, ownerEmail),
+            activeThread.id,
+            messageId,
+            'accepted'
+          );
+          markChatOfferResolved(order, 'warranty', 'accepted');
+        } else {
+          if (
+            typeof window !== 'undefined' &&
+            !window.confirm('Từ chối đề xuất bảo hành? Đơn vẫn khiếu nại — shop có thể xử lý lại.')
+          ) {
+            return;
+          }
+          if (patchOrderById) patchOrderById(orderId, buildWarrantyRejectPatch());
+          else if (setOrders) {
+            setOrders(prev =>
+              prev.map(o => (o.id === orderId ? { ...o, ...buildWarrantyRejectPatch() } : o))
+            );
+          }
+          updateThreadMessageActionStatus(
+            resolveBuyerOwnerEmailForOrder(order, ownerEmail),
+            activeThread.id,
+            messageId,
+            'rejected'
+          );
+          markChatOfferResolved(order, 'warranty', 'rejected');
+        }
+      }
+    },
+    [
+      messages,
+      orders,
+      activeThread,
+      ownerEmail,
+      patchOrderById,
+      setOrders,
+      markChatOfferResolved,
+    ]
+  );
 
   const chatMatchIds = useMemo(() => {
     const q = chatSearch.trim().toLowerCase();
@@ -299,6 +503,9 @@ export function StorefrontMessagesView({
                     key={msg.id}
                     message={msg}
                     session={session}
+                    orders={orders}
+                    isBuyerMode={isBuyerMode}
+                    onOfferAction={handleMessageOfferAction}
                     highlightQuery={
                       chatSearch.trim() && msg.text.toLowerCase().includes(chatSearch.trim().toLowerCase())
                         ? chatSearch.trim()
@@ -428,6 +635,39 @@ function highlightText(
   return parts.length > 0 ? parts : text;
 }
 
+function canShowResolvableOffer(action: ChatMessageAction, order?: Order): boolean {
+  if (action.status !== 'pending') return false;
+  if (action.kind === 'warranty') {
+    return Boolean(order && hasPendingWarrantyOffer(order)) || (action.offerQuantity ?? 0) > 0;
+  }
+  if (action.kind === 'partial_refund') {
+    return Boolean(order && hasPendingRefundOffer(order)) || (action.offerQuantity ?? 0) > 0;
+  }
+  return false;
+}
+
+function getOfferActionSummary(action: ChatMessageAction, order?: Order): string | null {
+  if (action.status !== 'pending') return null;
+  const maxQ = action.orderQuantity ?? order?.quantity;
+  if (action.kind === 'warranty' && action.offerQuantity != null) {
+    const max = maxQ ?? action.offerQuantity;
+    return `Số lượng bảo hành: ${action.offerQuantity}/${max} SP`;
+  }
+  if (action.kind === 'partial_refund' && action.offerQuantity != null) {
+    const max = maxQ ?? action.offerQuantity;
+    const money =
+      action.refundAmountVnd != null
+        ? formatVnd(action.refundAmountVnd)
+        : order
+          ? formatVnd(computePartialRefundVnd(order, action.offerQuantity))
+          : null;
+    return money
+      ? `Hoàn ${money} · ${action.offerQuantity}/${max} SP`
+      : `Hoàn ${action.offerQuantity}/${max} SP`;
+  }
+  return null;
+}
+
 function MessageSearchInput({
   value,
   onChange,
@@ -476,18 +716,35 @@ function MessageSearchInput({
 function MessageBubbleRow({
   message,
   session,
+  orders = [],
+  isBuyerMode = false,
+  onOfferAction,
   highlightQuery = '',
   isActiveMatch = false,
   setMessageRef,
 }: {
   message: ViewChatMessage;
   session: { login: string; displayName: string; email: string };
+  orders?: Order[];
+  isBuyerMode?: boolean;
+  onOfferAction?: (
+    messageId: string,
+    orderId: string,
+    kind: 'partial_refund' | 'warranty',
+    accept: boolean
+  ) => void;
   highlightQuery?: string;
   isActiveMatch?: boolean;
   setMessageRef?: (id: string, el: HTMLDivElement | null) => void;
 }) {
   const isSelf = message.side === 'self';
   const sender = resolvePersonaById(message.sender, session);
+  const action = message.action;
+  const order = action ? orders.find(o => o.id === action.orderId) : undefined;
+  const showOfferButtons =
+    message.sender === 'seller' && action != null && canShowResolvableOffer(action, order);
+  const offerSummary = action ? getOfferActionSummary(action, order) : null;
+  const canClickOffer = showOfferButtons && isBuyerMode && !isSelf && Boolean(onOfferAction);
 
   return (
     <div
@@ -512,6 +769,82 @@ function MessageBubbleRow({
           <p className="whitespace-pre-wrap break-words">
             {highlightText(message.text, highlightQuery, isSelf, isActiveMatch)}
           </p>
+          {showOfferButtons && action && (
+            <div
+              className={`flex flex-col gap-2 mt-2.5 pt-2 ${
+                isSelf ? 'border-t border-white/25' : 'border-t border-slate-200/80'
+              }`}
+            >
+              {offerSummary && (
+                <p
+                  className={`text-xs font-bold leading-snug ${
+                    isSelf ? 'text-white' : 'text-amber-800 bg-amber-50 rounded-lg px-2 py-1.5 border border-amber-200/80'
+                  }`}
+                >
+                  {offerSummary}
+                </p>
+              )}
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  disabled={!canClickOffer}
+                  onClick={() =>
+                    canClickOffer &&
+                    onOfferAction?.(message.id, action.orderId, action.kind, true)
+                  }
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${
+                    canClickOffer
+                      ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                      : isSelf
+                        ? 'bg-white/15 text-white/90 cursor-not-allowed'
+                        : 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                  }`}
+                >
+                  Đồng ý
+                </button>
+                <button
+                  type="button"
+                  disabled={!canClickOffer}
+                  onClick={() =>
+                    canClickOffer &&
+                    onOfferAction?.(message.id, action.orderId, action.kind, false)
+                  }
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${
+                    canClickOffer
+                      ? 'bg-white border border-slate-300 hover:bg-slate-50 text-slate-700'
+                      : isSelf
+                        ? 'bg-white/10 border border-white/20 text-white/80 cursor-not-allowed'
+                        : 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                  }`}
+                >
+                  Từ chối
+                </button>
+              </div>
+              {!canClickOffer && (
+                <p className={`text-[10px] leading-snug ${isSelf ? 'text-emerald-100/90' : 'text-slate-500'}`}>
+                  Chờ khách chọn Đồng ý hoặc Từ chối
+                </p>
+              )}
+            </div>
+          )}
+          {action?.status === 'accepted' && (
+            <p
+              className={`text-[11px] font-semibold mt-2 ${
+                isSelf ? 'text-emerald-100' : 'text-emerald-700'
+              }`}
+            >
+              Đã đồng ý
+            </p>
+          )}
+          {action?.status === 'rejected' && (
+            <p
+              className={`text-[11px] font-semibold mt-2 ${
+                isSelf ? 'text-emerald-100' : 'text-rose-600'
+              }`}
+            >
+              Đã từ chối
+            </p>
+          )}
           <p
             className={`text-[10px] mt-1 tabular-nums text-right ${
               isSelf ? 'text-emerald-100/90' : 'text-slate-400'
@@ -750,33 +1083,18 @@ function PartnerInfoSidebar({ thread }: { thread: MessageThreadSummary }) {
 
       <div className="p-4 space-y-1">
         <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-1 mb-2">
-          Thông tin liên hệ
+          Đơn hàng liên quan
         </p>
-
-        <InfoRow icon={<User size={16} />} label="Tên hiển thị" value={p.displayName} />
-        {p.loginName && (
-          <InfoRow icon={<AtSign size={16} />} label="Tên đăng nhập" value={p.loginName} mono />
+        {p.lastOrderId ? (
+          <InfoRow
+            icon={<ShoppingBag size={16} />}
+            label="Đơn gần nhất"
+            lines={buildLatestOrderLines(p)}
+          />
+        ) : (
+          <p className="text-xs text-slate-400 px-3 py-2">Chưa có đơn chung</p>
         )}
-        {p.email && <InfoRow icon={<Mail size={16} />} label="Email" value={p.email} mono />}
-        {p.storeName && <InfoRow icon={<Store size={16} />} label="Gian hàng" value={p.storeName} />}
-        {p.platform && <InfoRow icon={<Package size={16} />} label="Nền tảng" value={p.platform} />}
-
-        <div className="pt-4 mt-2 border-t border-slate-100">
-          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-1 mb-2">
-            Đơn hàng liên quan
-          </p>
-          {p.lastOrderId ? (
-            <InfoRow
-              icon={<ShoppingBag size={16} />}
-              label="Đơn gần nhất"
-              value={p.lastProductName ? `${p.lastOrderId} · ${p.lastProductName}` : p.lastOrderId}
-              multiline
-            />
-          ) : (
-            <p className="text-xs text-slate-400 px-3 py-2">Chưa có đơn chung</p>
-          )}
-          <InfoRow icon={<ShoppingBag size={16} />} label="Số đơn chung" value={String(p.orderCount)} />
-        </div>
+        <InfoRow icon={<ShoppingBag size={16} />} label="Số đơn chung" value={String(p.orderCount)} />
       </div>
     </div>
   );
@@ -786,28 +1104,46 @@ function InfoRow({
   icon,
   label,
   value,
+  lines,
   mono,
-  multiline,
 }: {
   icon: ReactNode;
   label: string;
-  value: string;
+  value?: string;
+  lines?: string[];
   mono?: boolean;
-  multiline?: boolean;
 }) {
+  const stacked = lines && lines.length > 0;
+  const single = value ?? '';
+
   return (
     <div className="flex gap-3 px-3 py-3 rounded-xl hover:bg-slate-50 transition-colors">
       <span className="text-emerald-600 mt-0.5 shrink-0">{icon}</span>
       <div className="min-w-0 flex-1">
         <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">{label}</p>
-        <p
-          className={`text-[13px] text-slate-800 font-medium mt-0.5 ${
-            mono ? 'font-mono text-[12px]' : ''
-          } ${multiline ? 'break-words leading-snug' : 'truncate'}`}
-          title={value}
-        >
-          {value}
-        </p>
+        {stacked ? (
+          <div className="mt-1 space-y-1">
+            {lines.map((line, i) => (
+              <p
+                key={`${line}-${i}`}
+                className={`text-[13px] text-slate-800 font-medium break-words leading-snug ${
+                  i === 0 ? 'font-semibold text-slate-900' : ''
+                }`}
+              >
+                {line}
+              </p>
+            ))}
+          </div>
+        ) : (
+          <p
+            className={`text-[13px] text-slate-800 font-medium mt-0.5 truncate ${
+              mono ? 'font-mono text-[12px]' : ''
+            }`}
+            title={single}
+          >
+            {single}
+          </p>
+        )}
       </div>
     </div>
   );

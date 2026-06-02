@@ -6,6 +6,7 @@ import {
   type ResellerRequest,
 } from '../reseller/resellerRequests';
 import { getOrderFeeBasisTotalVnd } from '../orderRefund';
+import { isWarrantyReplacementOrder } from './warrantyOffer';
 import { formatVnd, parsePriceToVndNumber } from '../orderAmountDisplay';
 
 export interface ResellerReferrerContext {
@@ -40,6 +41,7 @@ export function computeResellerCommissionVnd(totalVnd: number, percent: number):
 
 /** Tiền reseller (người giới thiệu) được hưởng trên đơn = tổng đơn × % chiết khấu. */
 export function getOrderResellerFeeVnd(order: Order): number {
+  if (isWarrantyReplacementOrder(order)) return 0;
   if (!hasOrderResellerReferrer(order)) return 0;
 
   if (

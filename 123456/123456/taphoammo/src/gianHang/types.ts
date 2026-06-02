@@ -1,4 +1,4 @@
-export type Status = 'Đang bán' | 'Tạm ngưng' | 'Chờ duyệt' | 'Đã hủy';
+export type Status = 'Đang bán' | 'Tạm ngưng' | 'Chờ duyệt' | 'Đóng' | 'Đã hủy';
 export type BusinessLine = 'Bán sản phẩm' | 'Dịch vụ';
 
 export interface WarehouseItem {
@@ -16,6 +16,8 @@ export interface Product {
   fee: string;
   status: Status;
   active: boolean;
+  /** Admin Panel đóng/tạm ngưng — người bán không được bật lại qua cột Bật/Tắt. */
+  sellerToggleLocked?: boolean;
   date: string;
   sellerName?: string;
   warehouseItems?: WarehouseItem[];

@@ -4,7 +4,7 @@
  */
 import React from 'react';
 
-import { useState } from 'react';
+import { useMemo, useState, useCallback } from 'react';
 import { AnimatePresence } from 'motion/react';
 import { AdminSidebar } from './AdminSidebar';
 import { StatisticsView } from './StatisticsView';
@@ -17,7 +17,13 @@ import { WithdrawalManagementView } from './WithdrawalManagementView';
 import { PaymentHistoryView } from './PaymentHistoryView';
 import { NotificationView } from './NotificationView';
 import { GianHangApprovalView } from './GianHangApprovalView';
+import { ProductOrdersView } from './ProductOrdersView';
+import { ServiceOrdersView } from './ServiceOrdersView';
+import { ComplaintOrdersView } from './ComplaintOrdersView';
+import { AdminPanelOrderShell } from './AdminPanelOrderShell';
 import { WarehouseView } from '../gianHang/WarehouseView';
+import { OrderDetailView as ProductOrderDetailView } from '../OrderDetailView';
+import { ServiceOrderDetailView } from '../ServiceOrderDetailView';
 import { countGianHangPendingApproval } from '../gianHang/categorySectionUtils';
 import type { BusinessLine, Category, Product } from '../gianHang/types';
 import type { AdminView, PaymentHistory } from './types';
@@ -27,12 +33,18 @@ import { ADMIN_NOTIFICATIONS } from './data';
 const VIEW_COMPONENTS: Record<
   Exclude<
     AdminView,
-    'payment-history' | 'seller-transaction-history' | 'sales' | 'gian-hang-approval'
+    | 'payment-history'
+    | 'seller-transaction-history'
+    | 'sales'
+    | 'gian-hang-approval'
+    | 'users'
+    | 'product-orders'
+    | 'service-orders'
+    | 'complaint-orders'
   >,
   React.FC
 > = {
   statistics: StatisticsView,
-  users: UserManagementView,
   'top-stores': TopStoreManagementView,
   messages: MessageManagementView,
   'payment-methods': PaymentMethodsView,
@@ -63,8 +75,6 @@ export function AdminDashboard({
   onOpenManagePlatforms,
   onOpenManageProductTypes,
   onOpenMove,
-  onCreateGianHang,
-  onQuickCreateDemo,
   onCreatePlatform,
   onWarehouseProduct,
   isWarehouseOpen = false,
@@ -72,6 +82,17 @@ export function AdminDashboard({
   warehouseCategory = null,
   onWarehouseBack,
   onWarehouseUpdateProduct,
+  onShowStats,
+  onShowHistory,
+  onAdminCloseProduct,
+  onAdminSuspendProduct,
+  onAdminReopenProduct,
+  onFulfillPreOrder,
+  onAcceptServiceOrder,
+  onDeliverServiceOrder,
+  onCancelServiceProcessing,
+  onReportDefectiveItems,
+  onUploadDefectiveItems,
 }: {
   extraPaymentHistory?: PaymentHistory[];
   orders?: Order[];
@@ -95,10 +116,6 @@ export function AdminDashboard({
   onOpenManagePlatforms?: () => void;
   onOpenManageProductTypes?: () => void;
   onOpenMove?: () => void;
-  onCreateGianHang?: () => void;
-  onQuickCreateDemo?: (
-    businessLine: BusinessLine
-  ) => import('../gianHang/GianHangManagePanel').QuickCreateDemoResult | void;
   onCreatePlatform?: () => void;
   onWarehouseProduct?: (product: Product, category: Category) => void;
   isWarehouseOpen?: boolean;
@@ -106,18 +123,63 @@ export function AdminDashboard({
   warehouseCategory?: Category | null;
   onWarehouseBack?: () => void;
   onWarehouseUpdateProduct?: (product: Product) => void;
+  onShowStats?: (product: Product) => void;
+  onShowHistory?: (product: Product) => void;
+  onAdminCloseProduct?: (productId: string) => void;
+  onAdminSuspendProduct?: (productId: string) => void;
+  onAdminReopenProduct?: (productId: string) => void;
+  onFulfillPreOrder?: (orderId: string) => { ok: boolean; message: string };
+  onAcceptServiceOrder?: (orderId: string) => void;
+  onDeliverServiceOrder?: (orderId: string, deliveryContent: string) => void;
+  onCancelServiceProcessing?: (orderId: string) => void;
+  onReportDefectiveItems?: (orderId: string, itemIds: string[]) => void;
+  onUploadDefectiveItems?: (orderId: string, payload: { text: string }) => void;
 }) {
   const [activeView, setActiveView] = useState<AdminView>('statistics');
+  const [panelOrderDetailId, setPanelOrderDetailId] = useState<string | null>(null);
   const notificationCount = ADMIN_NOTIFICATIONS.filter((n) => !n.read).length;
   const pendingGianHangCount = countGianHangPendingApproval(categories);
+
+  const complaintOrderCount = useMemo(
+    () => orders.filter(o => o.status === 'Khiếu nại' || o.status === 'Tranh chấp').length,
+    [orders]
+  );
+
+  const pendingPreOrderCount = useMemo(
+    () =>
+      orders.filter(
+        o =>
+          o.isPreOrder &&
+          !o.preOrderFulfilled &&
+          !(o.deliveredItems?.length ?? 0) &&
+          o.order_type !== 'service'
+      ).length,
+    [orders]
+  );
+
+  const openPanelOrderDetail = useCallback((orderId: string) => {
+    setPanelOrderDetailId(orderId);
+  }, []);
+
+  const closePanelOrderDetail = useCallback(() => {
+    setPanelOrderDetailId(null);
+  }, []);
 
   const ActiveView =
     activeView === 'payment-history' ||
     activeView === 'seller-transaction-history' ||
     activeView === 'sales' ||
-    activeView === 'gian-hang-approval'
+    activeView === 'gian-hang-approval' ||
+    activeView === 'users' ||
+    activeView === 'product-orders' ||
+    activeView === 'service-orders' ||
+    activeView === 'complaint-orders'
       ? null
       : VIEW_COMPONENTS[activeView];
+
+  const panelDetailOrder = panelOrderDetailId
+    ? orders.find(o => o.id === panelOrderDetailId)
+    : undefined;
 
   const setOrdersSafe = setOrders ?? (() => {});
   const noop = () => {};
@@ -129,15 +191,37 @@ export function AdminDashboard({
         onViewChange={setActiveView}
         notificationCount={notificationCount}
         pendingGianHangCount={pendingGianHangCount}
+        complaintOrderCount={complaintOrderCount}
+        pendingPreOrderCount={pendingPreOrderCount}
       />
       <main className="flex-1 min-w-0 overflow-hidden">
-        {isWarehouseOpen && warehouseProduct && warehouseCategory && onWarehouseBack && onWarehouseUpdateProduct ? (
+        {panelDetailOrder ? (
+          <div className="p-6 h-full overflow-y-auto">
+            {panelDetailOrder.order_type === 'service' ? (
+              <ServiceOrderDetailView
+                order={panelDetailOrder}
+                onBack={closePanelOrderDetail}
+                onAcceptServiceOrder={onAcceptServiceOrder ?? noop}
+                onDeliverServiceOrder={onDeliverServiceOrder ?? noop}
+                onCancelServiceProcessing={onCancelServiceProcessing ?? noop}
+              />
+            ) : (
+              <ProductOrderDetailView
+                order={panelDetailOrder}
+                onBack={closePanelOrderDetail}
+                onReportDefectiveItems={onReportDefectiveItems ?? noop}
+                onUploadDefectiveItems={onUploadDefectiveItems ?? noop}
+              />
+            )}
+          </div>
+        ) : isWarehouseOpen && warehouseProduct && warehouseCategory && onWarehouseBack && onWarehouseUpdateProduct ? (
           <div className="p-6 h-full overflow-y-auto">
             <WarehouseView
               product={warehouseProduct}
               category={warehouseCategory}
               onBack={onWarehouseBack}
               onUpdateProduct={onWarehouseUpdateProduct}
+              orders={orders}
             />
           </div>
         ) : (
@@ -153,6 +237,62 @@ export function AdminDashboard({
           ) : activeView === 'sales' ? (
             <React.Fragment key="sales">
               <SalesManagementView orders={orders} setOrders={setOrdersSafe} />
+            </React.Fragment>
+          ) : activeView === 'product-orders' ? (
+            <React.Fragment key="product-orders">
+              <AdminPanelOrderShell
+                title="Đơn hàng sản phẩm"
+                subtitle="Toàn bộ đơn sản phẩm của mọi người bán trên hệ thống — lọc theo người bán, xem chi tiết, giao đặt trước, bảo hành."
+                orders={orders.filter(o => o.order_type !== 'service')}
+              >
+                {filtered => (
+                  <ProductOrdersView
+                    orders={filtered}
+                    setOrders={setOrdersSafe}
+                    onOrderClick={openPanelOrderDetail}
+                    onFulfillPreOrder={onFulfillPreOrder}
+                    defaultStatusFilter={pendingPreOrderCount > 0 ? 'Đặt trước' : 'Tất cả'}
+                  />
+                )}
+              </AdminPanelOrderShell>
+            </React.Fragment>
+          ) : activeView === 'service-orders' ? (
+            <React.Fragment key="service-orders">
+              <AdminPanelOrderShell
+                title="Đơn hàng dịch vụ"
+                subtitle="Đơn dịch vụ của tất cả người bán — theo dõi trạng thái, hủy, bảo hành."
+                orders={orders.filter(o => o.order_type === 'service')}
+              >
+                {filtered => (
+                  <ServiceOrdersView
+                    orders={filtered}
+                    setOrders={setOrdersSafe}
+                    onOrderClick={openPanelOrderDetail}
+                  />
+                )}
+              </AdminPanelOrderShell>
+            </React.Fragment>
+          ) : activeView === 'complaint-orders' ? (
+            <React.Fragment key="complaint-orders">
+              <AdminPanelOrderShell
+                title="Đơn hàng khiếu nại"
+                subtitle="Đơn Khiếu nại / Tranh chấp của mọi người bán — giải quyết hoàn tiền, bảo hành, chuyển tranh chấp."
+                orders={orders.filter(
+                  o => o.status === 'Khiếu nại' || o.status === 'Tranh chấp'
+                )}
+              >
+                {filtered => (
+                  <ComplaintOrdersView
+                    orders={filtered}
+                    setOrders={setOrdersSafe}
+                    onOrderClick={openPanelOrderDetail}
+                  />
+                )}
+              </AdminPanelOrderShell>
+            </React.Fragment>
+          ) : activeView === 'users' ? (
+            <React.Fragment key="users">
+              <UserManagementView orders={orders} extraPaymentHistory={extraPaymentHistory} />
             </React.Fragment>
           ) : activeView === 'gian-hang-approval' ? (
             <React.Fragment key="gian-hang-approval">
@@ -178,10 +318,13 @@ export function AdminDashboard({
                 onOpenManagePlatforms={onOpenManagePlatforms}
                 onOpenManageProductTypes={onOpenManageProductTypes}
                 onOpenMove={onOpenMove}
-                onCreateGianHang={onCreateGianHang}
-                onQuickCreateDemo={onQuickCreateDemo}
                 onCreatePlatform={onCreatePlatform}
                 onWarehouseProduct={onWarehouseProduct}
+                onShowStats={onShowStats}
+                onShowHistory={onShowHistory}
+                onAdminCloseProduct={onAdminCloseProduct}
+                onAdminSuspendProduct={onAdminSuspendProduct}
+                onAdminReopenProduct={onAdminReopenProduct}
               />
             </React.Fragment>
           ) : (

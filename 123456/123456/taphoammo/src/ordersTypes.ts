@@ -9,6 +9,9 @@ export interface DeliveredWarehouseItem {
   id: string;
   content: string;
   time?: string;
+  /** Người mua báo lỗi SP — hiển thị trong kho đã bán của người bán. */
+  buyerReportedDefective?: boolean;
+  buyerReportedAtMs?: number;
 }
 
 export type OrderStatus =
@@ -112,12 +115,19 @@ export interface Order {
   partialRefundQuantity?: number;
   /** Khách chấp nhận / từ chối đề xuất hoàn một phần từ admin. */
   refundOfferStatus?: RefundOfferStatus;
+  /** Số lượng SP đề xuất bảo hành (chờ khách xác nhận). */
+  warrantyOfferQuantity?: number;
+  /** Khách chấp nhận / từ chối đề xuất bảo hành từ admin. */
+  warrantyOfferStatus?: RefundOfferStatus;
 }
 
 export interface OrderBuyerReview {
   rating: number;
   comment: string;
   createdAtMs: number;
+  /** Phản hồi của người bán trên đánh giá. */
+  sellerReply?: string;
+  sellerReplyAtMs?: number;
 }
 
 /** Số cuối trong mã đơn (ORD-835150) — so sánh số học */

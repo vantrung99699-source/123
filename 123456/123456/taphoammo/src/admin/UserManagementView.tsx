@@ -2,7 +2,7 @@
  * UserManagementView - Quản lý người dùng
  */
 
-import { useState, useRef, useEffect, useMemo, type ComponentType } from 'react';
+import { useState, useEffect, useMemo, type ComponentType } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Search,
@@ -10,24 +10,32 @@ import {
   Wallet,
   ShoppingBag,
   History,
-  TrendingUp,
   Pencil,
-  Package,
-  Key,
-  ShieldOff,
-  LogIn,
-  Lock,
-  Send,
   Ban,
+  LogIn,
   X,
-  CheckCircle2,
   ChevronDown,
-  UserCircle2,
 } from 'lucide-react';
-import type { AdminUser } from './types';
+import type { AdminUser, PaymentHistory } from './types';
+import type { Order } from '../ordersTypes';
 import { ADMIN_USERS } from './data';
 import { mergeAdminUsersWithStorefront } from './mergeStorefrontUsersForAdmin';
 import { getAdminUserBalanceVnd, setStorefrontWalletVndForEmail } from '../auth/storefrontWalletByEmail';
+import { appendAdminUserLedgerEntry } from './userProfileAdmin';
+import {
+  getUserResellerWalletVnd,
+  getUserResellerCommissionTotalVnd,
+  getUserSellerRoleWalletVnd,
+  getUserSellerPayoutTotalVnd,
+} from './userFinanceAdmin';
+import {
+  UserPaymentHistoryModal,
+  UserEditModal,
+  UserBanConfirmModal,
+  UserResellerDetailModal,
+  UserSellerSalesDetailModal,
+} from './UserAdminModals';
+import { adminLoginAsStorefrontUser } from '../auth/adminImpersonateStorefront';
 
 const parseVndAmount = (s: string) => Number(String(s).replace(/\D/g, '')) || 0;
 const formatVnd = (n: number) => `${new Intl.NumberFormat('vi-VN').format(n)} đ`;
@@ -35,6 +43,8 @@ const formatVnd = (n: number) => `${new Intl.NumberFormat('vi-VN').format(n)} đ
 const StatusBadge = ({ status }: { status: AdminUser['status'] }) => {
   const styles: Record<string, string> = {
     'Hoạt động': 'bg-emerald-50 text-emerald-600 border-emerald-100',
+    'Bị cấm': 'bg-red-50 text-red-600 border-red-100',
+    'Chờ xác nhận': 'bg-amber-50 text-amber-600 border-amber-100',
     'Nghi spam': 'bg-orange-50 text-orange-600 border-orange-100',
     'Khóa chat': 'bg-slate-100 text-slate-500 border-slate-200',
   };
@@ -80,6 +90,12 @@ const BalanceModal = ({
         return;
       }
       setStorefrontWalletVndForEmail(user.email, delta);
+      appendAdminUserLedgerEntry(user.email, {
+        kind: 'set_balance',
+        amountVnd: delta - currentVnd,
+        label: 'Admin đặt lại số dư',
+        detail: formatVnd(delta),
+      });
     } else {
       if (delta <= 0) {
         setFormError('Nhập số tiền lớn hơn 0.');
@@ -87,8 +103,18 @@ const BalanceModal = ({
       }
       if (op === 'Cộng tiền') {
         setStorefrontWalletVndForEmail(user.email, currentVnd + delta);
+        appendAdminUserLedgerEntry(user.email, {
+          kind: 'topup',
+          amountVnd: delta,
+          label: 'Admin cộng tiền ví',
+        });
       } else {
         setStorefrontWalletVndForEmail(user.email, Math.max(0, currentVnd - delta));
+        appendAdminUserLedgerEntry(user.email, {
+          kind: 'deduct',
+          amountVnd: -delta,
+          label: 'Admin trừ tiền ví',
+        });
       }
     }
     setFormError(null);
@@ -269,21 +295,55 @@ const STATUS_OPTIONS: Array<'Tất cả' | AdminUser['status']> = [
   'Nghi spam',
 ];
 
-export function UserManagementView() {
+type UserModalKind =
+  | 'payment-history'
+  | 'edit'
+  | 'ban'
+  | 'reseller-detail'
+  | 'seller-detail'
+  | null;
+
+export interface UserManagementViewProps {
+  orders?: Order[];
+  extraPaymentHistory?: PaymentHistory[];
+}
+
+export function UserManagementView({
+  orders = [],
+  extraPaymentHistory = [],
+}: UserManagementViewProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'Tất cả' | AdminUser['status']>('Tất cả');
   const [selectedUser, setSelectedUser] = useState<AdminUser | null>(null);
+  const [modalUser, setModalUser] = useState<AdminUser | null>(null);
+  const [modalKind, setModalKind] = useState<UserModalKind>(null);
   const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
-  const dropdownRef = useRef<HTMLDivElement>(null);
 
   const [listRevision, setListRevision] = useState(0);
+
+  const openModal = (user: AdminUser, kind: Exclude<UserModalKind, null>) => {
+    setActiveDropdown(null);
+    setModalUser(user);
+    setModalKind(kind);
+  };
+
+  const handleLoginAsUser = (user: AdminUser) => {
+    setActiveDropdown(null);
+    const result = adminLoginAsStorefrontUser(user);
+    if (!result.ok) {
+      window.alert(result.message);
+    }
+  };
 
   useEffect(() => {
     const bump = () => setListRevision((r) => r + 1);
     const onStorage = (e: StorageEvent) => {
       if (
         e.key === 'taphoammo_storefront_demo_accounts' ||
-        e.key === 'taphoammo_storefront_wallet_by_email'
+        e.key === 'taphoammo_storefront_wallet_by_email' ||
+        e.key === 'taphoammo_admin_user_ban_by_email' ||
+        e.key === 'taphoammo_storefront_ho_va_ten_by_email' ||
+        e.key === 'taphoammo_storefront_wallet_by_role_v1'
       ) {
         bump();
       }
@@ -298,9 +358,8 @@ export function UserManagementView() {
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setActiveDropdown(null);
-      }
+      const t = event.target as HTMLElement;
+      if (!t.closest('[data-user-action-menu]')) setActiveDropdown(null);
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
@@ -405,15 +464,21 @@ export function UserManagementView() {
               <tr className="bg-slate-50/50 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
                 <th className="px-6 py-4 border-r border-slate-100">STT / ID</th>
                 <th className="px-4 py-4 border-r border-slate-100">Người dùng</th>
-                <th className="px-4 py-4 border-r border-slate-100">Họ tên</th>
                 <th className="px-4 py-4 border-r border-slate-100">Số dư</th>
                 <th className="px-4 py-4 border-r border-slate-100">Tổng nạp / Tổng tiêu</th>
+                <th className="px-4 py-4 border-r border-slate-100 text-right min-w-[140px]">Ví Reseller / Tổng HH</th>
+                <th className="px-4 py-4 border-r border-slate-100 text-right min-w-[140px]">Ví rút / Đã bán</th>
                 <th className="px-4 py-4 border-r border-slate-100 text-center">Trạng thái</th>
                 <th className="px-4 py-4 text-center">Hành động</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {filteredUsers.map((user, idx) => (
+              {filteredUsers.map((user, idx) => {
+                const resellerWalletVnd = getUserResellerWalletVnd(user.email);
+                const resellerTotalVnd = getUserResellerCommissionTotalVnd(user, orders);
+                const sellerWalletVnd = getUserSellerRoleWalletVnd(user.email);
+                const sellerSoldTotalVnd = getUserSellerPayoutTotalVnd(user, orders);
+                return (
                 <motion.tr
                   key={user.id}
                   initial={{ opacity: 0, y: 10 }}
@@ -442,7 +507,6 @@ export function UserManagementView() {
                       </div>
                     </div>
                   </td>
-                  <td className="px-4 py-4 border-r border-slate-100 text-sm text-slate-600">{user.name}</td>
                   <td className="px-4 py-4 border-r border-slate-100">
                     <span className="text-sm font-bold text-emerald-600">{user.balance}</span>
                   </td>
@@ -451,6 +515,40 @@ export function UserManagementView() {
                       <span className="text-xs font-medium text-slate-600">Nạp: <b className="text-emerald-600">{user.totalDeposit}</b></span>
                       <span className="text-xs font-medium text-slate-600">Tiêu: <b className="text-slate-700">{user.totalSpent}</b></span>
                     </div>
+                  </td>
+                  <td className="px-4 py-4 border-r border-slate-100 text-right">
+                    <button
+                      type="button"
+                      onClick={() => openModal(user, 'reseller-detail')}
+                      className="w-full text-right hover:bg-violet-50/80 rounded-lg px-1 py-0.5 transition-colors"
+                      title="Xem chi tiết Reseller"
+                    >
+                      <div className="flex flex-col gap-1 items-end">
+                        <span className="text-xs font-medium text-slate-600">
+                          Ví: <b className="text-violet-600">{formatVnd(resellerWalletVnd)}</b>
+                        </span>
+                        <span className="text-xs font-medium text-slate-600">
+                          Tổng: <b className="text-violet-700">{formatVnd(resellerTotalVnd)}</b>
+                        </span>
+                      </div>
+                    </button>
+                  </td>
+                  <td className="px-4 py-4 border-r border-slate-100 text-right">
+                    <button
+                      type="button"
+                      onClick={() => openModal(user, 'seller-detail')}
+                      className="w-full text-right hover:bg-emerald-50/80 rounded-lg px-1 py-0.5 transition-colors"
+                      title="Xem chi tiết đã bán"
+                    >
+                      <div className="flex flex-col gap-1 items-end">
+                        <span className="text-xs font-medium text-slate-600">
+                          Ví rút: <b className="text-emerald-600">{formatVnd(sellerWalletVnd)}</b>
+                        </span>
+                        <span className="text-xs font-medium text-slate-600">
+                          Đã bán: <b className="text-emerald-700">{formatVnd(sellerSoldTotalVnd)}</b>
+                        </span>
+                      </div>
+                    </button>
                   </td>
                   <td className="px-4 py-4 border-r border-slate-100 text-center">
                     <StatusBadge status={user.status} />
@@ -464,7 +562,7 @@ export function UserManagementView() {
                       >
                         <Wallet size={18} />
                       </button>
-                      <div className="relative" ref={dropdownRef}>
+                      <div className="relative" data-user-action-menu>
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
@@ -482,21 +580,40 @@ export function UserManagementView() {
                               exit={{ opacity: 0, scale: 0.95, y: -5 }}
                               className="absolute right-0 top-full mt-2 w-56 bg-white rounded-2xl shadow-xl border border-slate-100 z-50 py-2 overflow-hidden"
                             >
-                              <button className="w-full flex items-center gap-3 px-4 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors">
+                              <button
+                                type="button"
+                                onClick={() => openModal(user, 'payment-history')}
+                                className="w-full flex items-center gap-3 px-4 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors"
+                              >
                                 <History size={16} /> Lịch sử thanh toán
                               </button>
-                              <button className="w-full flex items-center gap-3 px-4 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors">
-                                <TrendingUp size={16} /> Dòng tiền
-                              </button>
                               <div className="h-px bg-slate-50 my-1 mx-2" />
-                              <button className="w-full flex items-center gap-3 px-4 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors">
+                              <button
+                                type="button"
+                                onClick={() => openModal(user, 'edit')}
+                                className="w-full flex items-center gap-3 px-4 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors"
+                              >
                                 <Pencil size={16} /> Chỉnh sửa người dùng
                               </button>
-                              <button className="w-full flex items-center gap-3 px-4 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors">
-                                <Package size={16} /> Đơn hàng người dùng
+                              <button
+                                type="button"
+                                onClick={() => handleLoginAsUser(user)}
+                                disabled={user.status === 'Bị cấm'}
+                                className="w-full flex items-center gap-3 px-4 py-2.5 text-sm font-medium text-blue-600 hover:bg-blue-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                title={
+                                  user.status === 'Bị cấm'
+                                    ? 'Tài khoản bị cấm'
+                                    : 'Mở storefront đăng nhập thay người dùng này'
+                                }
+                              >
+                                <LogIn size={16} /> Đăng nhập với tư cách người dùng
                               </button>
                               <div className="h-px bg-slate-50 my-1 mx-2" />
-                              <button className="w-full flex items-center gap-3 px-4 py-2.5 text-sm font-medium text-orange-500 hover:bg-orange-50 transition-colors">
+                              <button
+                                type="button"
+                                onClick={() => openModal(user, 'ban')}
+                                className="w-full flex items-center gap-3 px-4 py-2.5 text-sm font-medium text-orange-500 hover:bg-orange-50 transition-colors"
+                              >
                                 <Ban size={16} /> Cấm tài khoản
                               </button>
                             </motion.div>
@@ -506,7 +623,8 @@ export function UserManagementView() {
                     </div>
                   </td>
                 </motion.tr>
-              ))}
+              );
+              })}
             </tbody>
           </table>
         </div>
@@ -518,6 +636,57 @@ export function UserManagementView() {
             user={selectedUser}
             onClose={() => setSelectedUser(null)}
             onApplied={() => setListRevision((r) => r + 1)}
+          />
+        )}
+        {modalUser && modalKind === 'payment-history' && (
+          <UserPaymentHistoryModal
+            user={modalUser}
+            orders={orders}
+            extraPaymentHistory={extraPaymentHistory}
+            onClose={() => {
+              setModalUser(null);
+              setModalKind(null);
+            }}
+          />
+        )}
+        {modalUser && modalKind === 'edit' && (
+          <UserEditModal
+            user={modalUser}
+            onClose={() => {
+              setModalUser(null);
+              setModalKind(null);
+            }}
+            onSaved={() => setListRevision((r) => r + 1)}
+          />
+        )}
+        {modalUser && modalKind === 'ban' && (
+          <UserBanConfirmModal
+            user={modalUser}
+            onClose={() => {
+              setModalUser(null);
+              setModalKind(null);
+            }}
+            onBanned={() => setListRevision((r) => r + 1)}
+          />
+        )}
+        {modalUser && modalKind === 'reseller-detail' && (
+          <UserResellerDetailModal
+            user={modalUser}
+            orders={orders}
+            onClose={() => {
+              setModalUser(null);
+              setModalKind(null);
+            }}
+          />
+        )}
+        {modalUser && modalKind === 'seller-detail' && (
+          <UserSellerSalesDetailModal
+            user={modalUser}
+            orders={orders}
+            onClose={() => {
+              setModalUser(null);
+              setModalKind(null);
+            }}
           />
         )}
       </AnimatePresence>

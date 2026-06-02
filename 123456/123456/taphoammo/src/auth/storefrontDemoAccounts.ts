@@ -64,3 +64,50 @@ export function listStorefrontSignups(): StoredStorefrontSignup[] {
     return [];
   }
 }
+
+export function updateStorefrontSignupRecord(
+  email: string,
+  patch: Partial<Pick<StoredStorefrontSignup, 'username' | 'password'>>
+): boolean {
+  const k = normEmail(email);
+  if (!k) return false;
+  try {
+    const raw = localStorage.getItem(KEY);
+    if (!raw) return false;
+    const obj = JSON.parse(raw) as Record<string, StoredStorefrontSignup>;
+    const row = obj[k];
+    if (!row) return false;
+    if (patch.username != null) row.username = patch.username.trim();
+    if (patch.password != null) row.password = patch.password;
+    obj[k] = { ...row, email: k };
+    localStorage.setItem(KEY, JSON.stringify(obj));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Đổi email khóa đăng ký — trả `exists` nếu email mới đã có tài khoản. */
+export function migrateStorefrontSignupEmail(
+  oldEmail: string,
+  newEmail: string
+): 'ok' | 'exists' | 'missing' {
+  const o = normEmail(oldEmail);
+  const n = normEmail(newEmail);
+  if (!o || !n) return 'missing';
+  if (o === n) return 'ok';
+  try {
+    const raw = localStorage.getItem(KEY);
+    if (!raw) return 'missing';
+    const obj = JSON.parse(raw) as Record<string, StoredStorefrontSignup>;
+    const row = obj[o];
+    if (!row) return 'missing';
+    if (obj[n]) return 'exists';
+    delete obj[o];
+    obj[n] = { ...row, email: n };
+    localStorage.setItem(KEY, JSON.stringify(obj));
+    return 'ok';
+  } catch {
+    return 'missing';
+  }
+}

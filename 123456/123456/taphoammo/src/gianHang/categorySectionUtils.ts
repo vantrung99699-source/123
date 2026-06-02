@@ -1,4 +1,9 @@
-import type { BusinessLine, Category, Status } from './types';
+import type { BusinessLine, Category, Product, Status } from './types';
+
+/** Người bán không được dùng Bật/Tắt khi admin đã khóa hoặc đóng mặt hàng. */
+export function isProductSellerToggleLocked(product: Product): boolean {
+  return product.status === 'Đóng' || product.sellerToggleLocked === true;
+}
 
 export function categoryDisplayOrderTimestamp(c: Category): number {
   if (typeof c.createdAt === 'number' && c.createdAt > 0) return c.createdAt;

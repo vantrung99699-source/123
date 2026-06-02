@@ -20,10 +20,9 @@ import {
   TrendingUp,
   Clock,
   History,
+  PlayCircle,
   CheckCircle2,
   XCircle,
-  AlertCircle,
-  Gavel,
   Zap,
   FileText,
   Facebook,
@@ -71,6 +70,7 @@ import {
   resolveGianHangDanhMucLabel,
   matchesAdminStatusTab,
   getGianHangResellerPercent,
+  isProductSellerToggleLocked,
 } from './categorySectionUtils';
 
 /** Menu ⋮ mặt hàng: seller = Quản lý cửa hàng; admin = Admin Panel (đủ mục vận hành). */
@@ -89,6 +89,9 @@ function buildProductMoreMenuItems(
   mode: ProductMoreMenuMode,
   handlers: {
     onApprove?: (id: string) => void;
+    onClose?: (id: string) => void;
+    onSuspend?: (id: string) => void;
+    onReopen?: (id: string) => void;
     onShowStats?: (product: Product) => void;
     onShowHistory?: (product: Product) => void;
   }
@@ -104,16 +107,44 @@ function buildProductMoreMenuItems(
         onClick: () => handlers.onApprove?.(product.id),
         hidden: product.status !== 'Chờ duyệt' || !handlers.onApprove,
       },
-      { label: 'Đóng', icon: XCircle, color: 'text-rose-600' },
-      { label: 'Tạm ngưng', icon: Clock, color: 'text-amber-600' },
-      { label: 'Khiếu nại', icon: AlertCircle, color: 'text-orange-600' },
-      { label: 'Tranh chấp', icon: Gavel, color: 'text-indigo-600' },
-      { label: 'Báo cáo', icon: Zap, color: 'text-purple-600' },
+      {
+        label: 'Mở',
+        icon: PlayCircle,
+        color: 'text-emerald-600',
+        onClick: () => handlers.onReopen?.(product.id),
+        hidden:
+          !handlers.onReopen ||
+          (product.status !== 'Đóng' &&
+            !(product.status === 'Tạm ngưng' && product.sellerToggleLocked)),
+      },
+      {
+        label: 'Đóng',
+        icon: XCircle,
+        color: 'text-rose-600',
+        onClick: () => handlers.onClose?.(product.id),
+        hidden: product.status === 'Đóng' || !handlers.onClose,
+      },
+      {
+        label: 'Tạm ngưng',
+        icon: Clock,
+        color: 'text-amber-600',
+        onClick: () => handlers.onSuspend?.(product.id),
+        hidden:
+          product.status === 'Tạm ngưng' ||
+          product.status === 'Đóng' ||
+          !handlers.onSuspend,
+      },
       { label: 'Ghi chú', icon: FileText, color: 'text-slate-600' }
     );
-  }
-
-  if (handlers.onShowStats) {
+    if (handlers.onShowStats) {
+      items.push({
+        label: 'Thống kê',
+        icon: LayoutDashboard,
+        color: 'text-blue-600',
+        onClick: () => handlers.onShowStats?.(product),
+      });
+    }
+  } else if (handlers.onShowStats) {
     items.push({
       label: 'Thống kê',
       icon: LayoutDashboard,
@@ -137,8 +168,9 @@ function buildProductMoreMenuItems(
 export function StatusBadge({ status }: { status: Status }) {
   const styles = {
     'Đang bán': 'bg-green-600 text-white border-transparent ring-green-500/10',
-    'Tạm ngưng': 'bg-rose-600 text-white border-transparent ring-rose-500/10',
+    'Tạm ngưng': 'bg-amber-500 text-white border-transparent ring-amber-500/10',
     'Chờ duyệt': 'bg-amber-400 text-amber-900 border-transparent ring-amber-500/10',
+    'Đóng': 'bg-slate-700 text-white border-transparent ring-slate-500/10',
     'Đã hủy': 'bg-slate-500 text-white border-transparent ring-slate-500/10',
   };
   return (
@@ -158,6 +190,9 @@ export function ProductRow({
   onShowHistory,
   onShowStats,
   onApprove,
+  onClose,
+  onSuspend,
+  onReopen,
   onMoveUp,
   onMoveDown,
   canMoveUp = false,
@@ -176,6 +211,12 @@ export function ProductRow({
   onShowHistory?: (product: Product) => void;
   onShowStats?: (product: Product) => void;
   onApprove?: (id: string) => void;
+  /** Admin Panel — đóng mặt hàng (Đã hủy). */
+  onClose?: (id: string) => void;
+  /** Admin Panel — tạm ngưng bán. */
+  onSuspend?: (id: string) => void;
+  /** Admin Panel — mở lại sau đóng/tạm ngưng bởi admin. */
+  onReopen?: (id: string) => void;
   onMoveUp?: () => void;
   onMoveDown?: () => void;
   canMoveUp?: boolean;
@@ -186,6 +227,9 @@ export function ProductRow({
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const moreMenuItems = buildProductMoreMenuItems(product, moreMenuMode, {
     onApprove,
+    onClose,
+    onSuspend,
+    onReopen,
     onShowStats,
     onShowHistory,
   }).filter(item => !item.hidden);
@@ -326,14 +370,25 @@ export function ProductRow({
       <StatusBadge status={product.status} />
     </td>
     <td className="py-3 pr-4 pl-4">
+      {(() => {
+        const toggleLocked = isProductSellerToggleLocked(product);
+        const toggleTitle =
+          product.status === 'Chờ duyệt'
+            ? 'Cần phê duyệt trước khi bật bán'
+            : toggleLocked
+              ? product.status === 'Đóng'
+                ? 'Admin đã đóng — chỉ Admin Panel được mở lại'
+                : 'Admin đã tạm ngưng — chỉ Admin Panel được mở lại'
+              : undefined;
+        return (
       <div 
         onClick={() => {
-          if (product.status === 'Chờ duyệt') return;
+          if (product.status === 'Chờ duyệt' || toggleLocked) return;
           onToggle?.(product.id);
         }}
-        title={product.status === 'Chờ duyệt' ? 'Cần phê duyệt trước khi bật bán' : undefined}
+        title={toggleTitle}
         className={`w-8 h-4 rounded-full relative transition-all duration-300 ring-2 ${
-          product.status === 'Chờ duyệt'
+          product.status === 'Chờ duyệt' || toggleLocked
             ? 'bg-slate-100 ring-slate-200/50 cursor-not-allowed opacity-60'
             : product.active
               ? 'bg-blue-600 ring-blue-500/10 cursor-pointer'
@@ -346,6 +401,8 @@ export function ProductRow({
           transition={{ type: "spring", stiffness: 500, damping: 30 }}
         />
       </div>
+        );
+      })()}
     </td>
   </motion.tr>
   );
@@ -417,6 +474,9 @@ export function CategorySection({
   onShowStats,
   onApproveCategory,
   onApproveProduct,
+  onAdminCloseProduct,
+  onAdminSuspendProduct,
+  onAdminReopenProduct,
   onSwapProducts,
   activeTab,
   searchQuery,
@@ -443,6 +503,10 @@ export function CategorySection({
   onShowStats?: (product: Product) => void;
   onApproveCategory?: (categoryId: string) => void;
   onApproveProduct?: (productId: string) => void;
+  /** Admin Panel — đóng / tạm ngưng mặt hàng (không dùng ở shell người bán). */
+  onAdminCloseProduct?: (productId: string) => void;
+  onAdminSuspendProduct?: (productId: string) => void;
+  onAdminReopenProduct?: (productId: string) => void;
   /** Hoán đổi thứ tự hai mặt hàng trong gian hàng */
   onSwapProducts?: (categoryId: string, productIdA: string, productIdB: string) => void;
   activeTab?: string;
@@ -792,6 +856,11 @@ export function CategorySection({
                 onWarehouseProduct={onWarehouseProduct}
                 onApproveCategory={onApproveCategory}
                 onApproveProduct={onApproveProduct}
+                onAdminCloseProduct={onAdminCloseProduct}
+                onAdminSuspendProduct={onAdminSuspendProduct}
+                onAdminReopenProduct={onAdminReopenProduct}
+                onShowHistory={onShowHistory}
+                onShowStats={onShowStats}
                 productMoreMenuMode={productMoreMenuMode}
                 activeTab={activeTab}
                 searchQuery={searchQuery}
@@ -832,6 +901,9 @@ export function CategorySection({
                         onShowHistory={onShowHistory}
                         onShowStats={onShowStats}
                         onApprove={onApproveProduct}
+                        onClose={onAdminCloseProduct}
+                        onSuspend={onAdminSuspendProduct}
+                        onReopen={onAdminReopenProduct}
                         moreMenuMode={productMoreMenuMode}
                         hideWarehouse={isServiceGianHang}
                         canMoveUp={idx > 0}

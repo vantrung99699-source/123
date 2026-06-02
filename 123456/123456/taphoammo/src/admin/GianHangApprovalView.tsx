@@ -16,10 +16,6 @@ export interface GianHangApprovalViewProps {
   onOpenManagePlatforms?: () => void;
   onOpenManageProductTypes?: () => void;
   onOpenMove?: () => void;
-  onCreateGianHang?: () => void;
-  onQuickCreateDemo?: (
-    businessLine: BusinessLine
-  ) => import('../gianHang/GianHangManagePanel').QuickCreateDemoResult | void;
   onCreatePlatform?: () => void;
   onCreateProduct?: (categoryId: string) => void;
   onEditCategory?: (category: Category) => void;
@@ -30,6 +26,11 @@ export interface GianHangApprovalViewProps {
   onSwapGianHang?: (parentId: string, gianHangIdA: string, gianHangIdB: string) => void;
   onSwapProducts?: (categoryId: string, productIdA: string, productIdB: string) => void;
   onWarehouseProduct?: (product: Product, category: Category) => void;
+  onShowStats?: (product: Product) => void;
+  onShowHistory?: (product: Product) => void;
+  onAdminCloseProduct?: (productId: string) => void;
+  onAdminSuspendProduct?: (productId: string) => void;
+  onAdminReopenProduct?: (productId: string) => void;
 }
 
 export function GianHangApprovalView({
@@ -42,8 +43,6 @@ export function GianHangApprovalView({
   onOpenManagePlatforms,
   onOpenManageProductTypes,
   onOpenMove,
-  onCreateGianHang,
-  onQuickCreateDemo,
   onCreatePlatform,
   onCreateProduct,
   onEditCategory,
@@ -54,6 +53,11 @@ export function GianHangApprovalView({
   onSwapGianHang,
   onSwapProducts,
   onWarehouseProduct,
+  onShowStats,
+  onShowHistory,
+  onAdminCloseProduct,
+  onAdminSuspendProduct,
+  onAdminReopenProduct,
 }: GianHangApprovalViewProps) {
   return (
     <GianHangManagePanel
@@ -63,12 +67,10 @@ export function GianHangApprovalView({
       lineForClassificationKey={lineForClassificationKey}
       defaultActiveTab="Tất cả"
       showConfigToolbar
-      showCreateGianHang
+      showCreateGianHang={false}
       onOpenManagePlatforms={onOpenManagePlatforms}
       onOpenManageProductTypes={onOpenManageProductTypes}
       onOpenMove={onOpenMove}
-      onCreateGianHang={onCreateGianHang}
-      onQuickCreateDemo={onQuickCreateDemo}
       onCreatePlatform={onCreatePlatform}
       onCreateProduct={onCreateProduct}
       onEditCategory={onEditCategory}
@@ -81,6 +83,11 @@ export function GianHangApprovalView({
       onSwapGianHang={onSwapGianHang}
       onSwapProducts={onSwapProducts}
       onWarehouseProduct={onWarehouseProduct}
+      onShowStats={onShowStats}
+      onShowHistory={onShowHistory}
+      onAdminCloseProduct={onAdminCloseProduct}
+      onAdminSuspendProduct={onAdminSuspendProduct}
+      onAdminReopenProduct={onAdminReopenProduct}
     />
   );
 }

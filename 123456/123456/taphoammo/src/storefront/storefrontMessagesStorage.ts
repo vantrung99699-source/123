@@ -1,3 +1,4 @@
+import type { ChatMessageAction, ChatMessageActionStatus } from './messageActions';
 import type { MessagingPersonaId } from './storefrontMessagingPersonas';
 import {
   buildBuyerSellerThreadId,
@@ -16,6 +17,7 @@ export interface StoredChatMessage {
   sender: MessagingPersonaId;
   text: string;
   sentAtMs: number;
+  action?: ChatMessageAction;
 }
 
 /** Tin nhắn đã map theo người đang xem. */
@@ -25,6 +27,7 @@ export interface ViewChatMessage {
   sender: MessagingPersonaId;
   text: string;
   sentAtMs: number;
+  action?: ChatMessageAction;
 }
 
 const KEY = 'taphoammo_storefront_messages_v2';
@@ -55,16 +58,34 @@ function writeStore(store: Store): void {
   }
 }
 
+function dedupeStoredMessages(list: StoredChatMessage[]): StoredChatMessage[] {
+  const out: StoredChatMessage[] = [];
+  for (const m of list) {
+    const last = out[out.length - 1];
+    if (
+      last &&
+      last.sender === m.sender &&
+      last.text === m.text &&
+      Math.abs(last.sentAtMs - m.sentAtMs) < 5000
+    ) {
+      continue;
+    }
+    out.push(m);
+  }
+  return out;
+}
+
 function readRawThread(ownerEmail: string, threadId: string): StoredChatMessage[] {
   const store = readStore();
   const list = store[normOwner(ownerEmail)]?.[threadId];
   if (!Array.isArray(list)) return [];
-  return list.filter(
+  const filtered = list.filter(
     (m): m is StoredChatMessage =>
       m != null &&
       typeof m.text === 'string' &&
       (m.sender === 'buyer' || m.sender === 'seller' || m.sender === 'reseller')
   );
+  return dedupeStoredMessages(filtered);
 }
 
 function writeRawThread(ownerEmail: string, threadId: string, messages: StoredChatMessage[]): void {
@@ -87,7 +108,72 @@ export function readThreadMessagesForViewer(
     sender: m.sender,
     text: m.text,
     sentAtMs: m.sentAtMs,
+    action: m.action,
   }));
+}
+
+export function appendThreadMessageWithAction(
+  ownerEmail: string,
+  threadId: string,
+  sender: MessagingPersonaId,
+  text: string,
+  action?: ChatMessageAction
+): ViewChatMessage[] {
+  const trimmed = text.trim();
+  if (!trimmed) return readThreadMessagesForViewer(ownerEmail, threadId, sender);
+  let prev = readRawThread(ownerEmail, threadId);
+  if (action) {
+    prev = prev.filter(
+      m =>
+        !(
+          m.action?.status === 'pending' &&
+          m.action.orderId === action.orderId &&
+          m.action.kind === action.kind
+        )
+    );
+  }
+  const msg: StoredChatMessage = {
+    id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    sender,
+    text: trimmed,
+    sentAtMs: Date.now(),
+    ...(action ? { action } : {}),
+  };
+  writeRawThread(ownerEmail, threadId, [...prev, msg]);
+  return readThreadMessagesForViewer(ownerEmail, threadId, sender);
+}
+
+export function updateThreadMessageActionStatus(
+  ownerEmail: string,
+  threadId: string,
+  messageId: string,
+  status: ChatMessageActionStatus
+): void {
+  const prev = readRawThread(ownerEmail, threadId);
+  const next = prev.map(m =>
+    m.id === messageId && m.action ? { ...m, action: { ...m.action, status } } : m
+  );
+  writeRawThread(ownerEmail, threadId, next);
+}
+
+export function resolvePendingActionMessageForOrder(
+  ownerEmail: string,
+  threadId: string,
+  orderId: string,
+  kind: ChatMessageAction['kind']
+): StoredChatMessage | null {
+  const list = readRawThread(ownerEmail, threadId);
+  for (let i = list.length - 1; i >= 0; i--) {
+    const m = list[i];
+    if (
+      m.action?.kind === kind &&
+      m.action.orderId === orderId &&
+      m.action.status === 'pending'
+    ) {
+      return m;
+    }
+  }
+  return null;
 }
 
 export function appendThreadMessage(

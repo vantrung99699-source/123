@@ -1,9 +1,20 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Search, Bell, ChevronDown, Shield, Star, User, Filter, TrendingUp, Eye, CheckCircle, CheckCircle2, ArrowRight, ChevronRight, ChevronLeft, X, LogOut, Clock, Wallet, Calendar, ShoppingBag, Package, FileText, ExternalLink, Settings, Edit2, Phone, Mail, MessageCircle, ArrowLeft, Loader2, AlertCircle, Store, Handshake, Copy } from 'lucide-react';
 import { PurchasedOrdersView } from './PurchasedOrdersView';
 import { orderIdSortKey, orderNewestSortKey, type DeliveredWarehouseItem, type Order } from './ordersTypes';
 import type { FulfillPurchaseResult } from './storefront/fulfillPurchase';
+import { reportDefectiveItemsOnOrder } from './storefront/reportDefectiveItems';
+import {
+  isAdminImpersonatingStorefront,
+  getAdminImpersonateTargetEmail,
+  clearAdminImpersonateFlag,
+} from './auth/adminImpersonateStorefront';
+import {
+  applyDefectiveUploadToOrder,
+  parseDefectiveUploadText,
+} from './storefront/defectiveItemUpload';
+import { appendSellerSoldWarehouseEntries } from './storefront/sellerSoldWarehouse';
 import type { PaymentHistory } from './admin/types';
 import { OrderDetailView } from './OrderDetailView';
 import { ServiceOrderDetailView } from './ServiceOrderDetailView';
@@ -58,6 +69,12 @@ import {
   sortStorefrontProductsWithTop1First,
 } from './gianHang/gianHangTop1Storefront';
 import { ProductReviewsContent } from './components/ProductReviewsContent';
+import {
+  buildCatalogReviewsForGianHang,
+  computeCatalogRatingStats,
+} from './gianHang/orderBuyerReviews';
+import { resolveBuyerSellerThreadIdFromOrder } from './storefront/storefrontMessageThreads';
+import type { StorefrontMessagesNavState } from './storefront/storefrontMessagesNav';
 import { useStorefrontLocale } from './i18n/storefrontLocale';
 import { useStorefrontCurrency } from './i18n/storefrontCurrency';
 import { isPreOrderAwaitingFulfillment } from './orderStatusBadge';
@@ -75,6 +92,13 @@ import {
   sumSellerPayoutByStatus,
   type SellerPayoutRow,
 } from './storefront/sellerPaymentHistory';
+import { SellerWithdrawModal } from './storefront/SellerWithdrawModal';
+import {
+  formatSellerWithdrawDate,
+  getSellerWithdrawHistory,
+  getSellerWithdrawnVnd,
+  type SellerWithdrawRecord,
+} from './storefront/sellerWithdraw';
 import { StorefrontTopUpView } from './storefront/StorefrontTopUpView';
 import { StorefrontMessagesView } from './storefront/StorefrontMessagesView';
 import { buildBuyerSellerThreadId, resolveBuyerPersona } from './storefront/storefrontMessagingPersonas';
@@ -1136,6 +1160,7 @@ const ProductDetailView = ({
   walletBalanceVnd,
   setWalletBalanceVnd,
   setAllOrders,
+  allOrders = [],
   onAfterPaymentSuccess,
   onAfterPreOrderSuccess,
   onCheckoutPaid,
@@ -1155,6 +1180,8 @@ const ProductDetailView = ({
   walletBalanceVnd: number;
   setWalletBalanceVnd: React.Dispatch<React.SetStateAction<number>>;
   setAllOrders: React.Dispatch<React.SetStateAction<Order[]>>;
+  /** Đơn toàn hệ thống — đồng bộ tab Reviews với đánh giá từ đơn đã mua. */
+  allOrders?: Order[];
   onAfterPaymentSuccess: (orderId: string) => void;
   /** Sau gửi đặt trước thành công — chuyển sang Đơn hàng đã mua. */
   onAfterPreOrderSuccess?: (orderId: string) => void;
@@ -1375,6 +1402,17 @@ const ProductDetailView = ({
     );
     return cat?.name?.trim() || product.name;
   }, [product.adminGianHangId, product.name, storefrontAdminGianHangCategories]);
+
+  const gianHangCatalogReviews = useMemo(() => {
+    if (!product.adminGianHangId?.trim()) return [];
+    return buildCatalogReviewsForGianHang(allOrders, product.adminGianHangId);
+  }, [allOrders, product.adminGianHangId]);
+
+  const gianHangCatalogRating = useMemo(
+    () =>
+      computeCatalogRatingStats(gianHangCatalogReviews, product.rating, product.reviews),
+    [gianHangCatalogReviews, product.rating, product.reviews]
+  );
 
   const applyDiscountCode = () => {
     const result = validateDiscountCodeForCheckout(discountCode, gianHangDisplayName);
@@ -1758,6 +1796,17 @@ const ProductDetailView = ({
       createdOrderForSuccess = newOrder;
       return [newOrder, ...prev];
     });
+    if (
+      createdOrderForSuccess?.deliveredItems?.length &&
+      createdOrderForSuccess.adminMatHangId
+    ) {
+      appendSellerSoldWarehouseEntries(
+        createdOrderForSuccess.adminMatHangId,
+        createdOrderForSuccess.id,
+        createdOrderForSuccess.deliveredItems,
+        createdOrderForSuccess.buyerName
+      );
+    }
     setWalletBalanceVnd(w => w - amount);
     consumeAppliedDiscountIfAny();
     if (createdOrderForSuccess) {
@@ -1893,13 +1942,6 @@ const ProductDetailView = ({
                 </span>
               </div>
             </div>
-
-            {isServiceProduct && (
-              <p className="mb-4 text-[12px] text-violet-800 bg-violet-50 border border-violet-100 rounded-lg px-3 py-2.5 leading-relaxed">
-                Gói dịch vụ — chọn mặt hàng (vd. tăng like Facebook), thanh toán để lên đơn. Người bán thực hiện sau khi
-                nhận đơn; không trừ kho tự động.
-              </p>
-            )}
 
             {/* Product Variants */}
             <div className="mb-5">
@@ -2276,8 +2318,9 @@ const ProductDetailView = ({
             {activeTab === 'reviews' && (
               <ProductReviewsContent
                 productName={product.name}
-                catalogRating={product.rating}
-                catalogReviewCount={product.reviews}
+                catalogRating={gianHangCatalogRating.rating}
+                catalogReviewCount={gianHangCatalogRating.count}
+                orderCatalogReviews={gianHangCatalogReviews}
               />
             )}
 
@@ -3592,6 +3635,7 @@ export const HomeView = ({
   onResellerRequestsChange,
 }: HomeViewProps) => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { header: headerT } = useStorefrontLocale();
   const { formatMoney: formatStorefrontMoney } = useStorefrontCurrency();
 
@@ -3644,6 +3688,7 @@ export const HomeView = ({
   const [resellerWalletVnd, setResellerWalletVnd] = useState(() =>
     getStorefrontRoleWalletVnd(storefrontBuyerEmail, 'reseller')
   );
+  const [sellerWithdrawRevision, setSellerWithdrawRevision] = useState(0);
 
   useEffect(() => {
     setSellerWalletVnd(getStorefrontRoleWalletVnd(storefrontBuyerEmail, 'seller'));
@@ -3823,9 +3868,14 @@ export const HomeView = ({
   const applyStorefrontAccountMode = useCallback((mode: StorefrontAccountMode) => {
     setStorefrontAccountModeState(mode);
     setStorefrontAccountMode(mode);
+    setSelectedProduct(null);
     if (mode !== 'buyer' && storefrontPage === 'my-orders') {
-      setStorefrontPage('shop');
+      setStorefrontPage('shop-catalog');
       setStorefrontOrderDetailId(null);
+    }
+    if (mode === 'reseller' && storefrontPage === 'payment-history') {
+      setPaymentHistoryActiveTab('transaction');
+      setPaymentHistorySelectedFilter('Tất cả');
     }
     if (isStorefrontCustomerAccountMode(mode)) {
       setPaymentHistoryActiveTab(tab =>
@@ -3839,6 +3889,17 @@ export const HomeView = ({
       setPaymentHistorySelectedFilter('Tất cả');
     }
   }, [storefrontPage]);
+
+  useEffect(() => {
+    const nav = location.state as StorefrontMessagesNavState | null;
+    if (!nav?.openStorefrontMessages && !nav?.messagesThreadId) return;
+    if (nav.forceSellerAccountMode) {
+      applyStorefrontAccountMode('seller');
+    }
+    setMessagesProductSeed(null);
+    openMessagesPage(nav.messagesThreadId ?? null);
+    navigate(location.pathname, { replace: true, state: {} });
+  }, [location.state, location.pathname, navigate, openMessagesPage, applyStorefrontAccountMode]);
 
   useEffect(() => {
     const fromUrl = parseResellerRefFromSearch(window.location.search);
@@ -3973,6 +4034,51 @@ export const HomeView = ({
     [allOrders, sellerIdentityKeys, isStorefrontCustomerMode]
   );
 
+  const sellerWithdrawnTotalVnd = useMemo(() => {
+    if (!isStorefrontSellerMode || !storefrontBuyerEmail.trim()) return 0;
+    return getSellerWithdrawnVnd(storefrontBuyerEmail);
+  }, [isStorefrontSellerMode, storefrontBuyerEmail, sellerWithdrawRevision]);
+
+  /** Khả dụng rút = tiền đã bán được (đã vào ví) − đã rút. */
+  const sellerAvailableWithdrawVnd = isStorefrontSellerMode ? sellerWalletVnd : 0;
+
+  const sellerWithdrawTableRows = useMemo(() => {
+    if (!isStorefrontSellerMode) {
+      return PAYMENT_HISTORY_MOCK_WITHDRAWALS;
+    }
+    return getSellerWithdrawHistory(storefrontBuyerEmail).map(r => ({
+      id: r.id,
+      date: formatSellerWithdrawDate(r.createdAtMs),
+      amount: r.amountVnd,
+      status: r.status === 'Success' ? ('Success' as const) : ('Processing' as const),
+      description: `Thực hiện rút tiền vào tài khoản: ${r.bankName} — ${r.accountNumber} (${r.accountHolder})`,
+    }));
+  }, [isStorefrontSellerMode, storefrontBuyerEmail, sellerWithdrawRevision]);
+
+  const handleSellerWithdrawSuccess = useCallback(
+    (record: SellerWithdrawRecord) => {
+      setSellerWalletVnd(w => Math.max(0, w - record.amountVnd));
+      const dateStr = formatSellerWithdrawDate(record.createdAtMs);
+      setPaymentHistoryCheckoutItems(prev => {
+        const ledgerId = `sell-wd-${record.id}`;
+        if (prev.some(p => p.id === ledgerId)) return prev;
+        return [
+          {
+            id: ledgerId,
+            date: dateStr,
+            type: 'Withdraw',
+            amount: -record.amountVnd,
+            reason: `Rút tiền vào ${record.bankName} — ${record.accountNumber}`,
+            transactionCode: record.id,
+          },
+          ...prev,
+        ];
+      });
+      setSellerWithdrawRevision(r => r + 1);
+    },
+    [setPaymentHistoryCheckoutItems]
+  );
+
   const filteredSellerPayoutRows = useMemo(() => {
     return sellerPayoutRows.filter(row => {
       if (paymentHistorySelectedFilter === 'Tất cả') return true;
@@ -4027,13 +4133,14 @@ export const HomeView = ({
       }
       if (paymentHistorySelectedFilter === 'Nạp tiền') return item.type === 'Top-up';
       if (paymentHistorySelectedFilter === 'Hoàn tiền' || paymentHistorySelectedFilter === 'Refund') {
-        return item.type === 'Refund' && !item.reason.includes('một phần');
+        return item.type === 'Refund' && !(item.reason ?? '').includes('một phần');
       }
       if (paymentHistorySelectedFilter === 'Hoàn 1 phần') {
+        const reason = item.reason ?? '';
         return (
-          (item.type === 'Refund' && item.reason.includes('một phần')) ||
-          (item.type === 'Selling' && item.reason.includes('hoàn 1 phần')) ||
-          (item.type === 'Reseller' && item.reason.includes('phần còn lại'))
+          (item.type === 'Refund' && reason.includes('một phần')) ||
+          (item.type === 'Selling' && reason.includes('hoàn 1 phần')) ||
+          (item.type === 'Reseller' && reason.includes('phần còn lại'))
         );
       }
       return true;
@@ -4060,12 +4167,13 @@ export const HomeView = ({
     if (paymentHistoryActiveTab === 'transaction') {
       return filteredPaymentHistoryTransactionRows.length;
     }
-    return PAYMENT_HISTORY_MOCK_WITHDRAWALS.length;
+    return sellerWithdrawTableRows.length;
   }, [
     paymentHistoryActiveTab,
     isStorefrontCustomerMode,
     filteredSellerPayoutRows.length,
     filteredPaymentHistoryTransactionRows.length,
+    sellerWithdrawTableRows.length,
   ]);
 
   const storefrontCategoryOptions = useMemo(
@@ -4544,6 +4652,33 @@ export const HomeView = ({
     ? allOrders.find(o => o.id === storefrontOrderDetailId)
     : undefined;
 
+  const handleReportDefectiveItems = useCallback(
+    (orderId: string, itemIds: string[]) => {
+      setAllOrders(prev =>
+        prev.map(o => (o.id === orderId ? reportDefectiveItemsOnOrder(o, itemIds) : o))
+      );
+    },
+    [setAllOrders]
+  );
+
+  const handleUploadDefectiveItems = useCallback(
+    (orderId: string, payload: { text: string }) => {
+      const totalLines = payload.text.split(/\r?\n/).filter(l => l.trim()).length;
+      let matched = 0;
+      setAllOrders(prev =>
+        prev.map(o => {
+          if (o.id !== orderId) return o;
+          const uids = new Set((o.deliveredItems ?? []).map(i => i.id));
+          const lines = parseDefectiveUploadText(payload.text, uids);
+          matched = lines.length;
+          return applyDefectiveUploadToOrder(o, lines);
+        })
+      );
+      return { matched, skipped: Math.max(0, totalLines - matched) };
+    },
+    [setAllOrders]
+  );
+
   const openPurchasedOrderDetail = useCallback(
     (orderId: string) => {
       const order = allOrders.find(o => o.id === orderId);
@@ -4567,7 +4702,7 @@ export const HomeView = ({
 
   const navigateToMyPurchasedOrders = useCallback(
     (orderId?: string) => {
-      setSelectedProduct(null);
+      applyStorefrontAccountMode('buyer');
       setStorefrontPage('my-orders');
       setUserMenuOpen(false);
       const order = orderId ? allOrders.find(o => o.id === orderId) : undefined;
@@ -4580,18 +4715,25 @@ export const HomeView = ({
       }
       window.scrollTo({ top: 0, behavior: 'smooth' });
     },
-    [allOrders]
+    [allOrders, applyStorefrontAccountMode]
   );
 
   /** Sau đặt trước — danh sách lọc «Tất cả», không mở chi tiết kho trống. */
   const navigateAfterPreOrderSuccess = useCallback(() => {
-    setSelectedProduct(null);
+    applyStorefrontAccountMode('buyer');
     setStorefrontPage('my-orders');
     setPurchasedOrdersStatusFilter('Tất cả');
     setStorefrontOrderDetailId(null);
     setUserMenuOpen(false);
     window.scrollTo({ top: 0, behavior: 'smooth' });
-  }, []);
+  }, [applyStorefrontAccountMode]);
+
+  /** Đơn đã mua chỉ dùng chế độ Người mua — tránh màn trống khi vẫn ở Reseller/Người bán. */
+  useEffect(() => {
+    if (storefrontPage !== 'my-orders') return;
+    if (isStorefrontBuyerAccountMode(storefrontAccountMode)) return;
+    applyStorefrontAccountMode('buyer');
+  }, [storefrontPage, storefrontAccountMode, applyStorefrontAccountMode]);
 
   useEffect(() => {
     if (!userMenuOpen) return;
@@ -4637,6 +4779,24 @@ export const HomeView = ({
       {/* Header — top bar (ngôn ngữ) + thanh emerald chính */}
       <div className="sticky top-0 z-50">
       <StorefrontTopBar />
+      {isAdminImpersonatingStorefront() && (
+        <div className="bg-amber-500 border-b border-amber-600 text-white text-[12px] font-semibold py-2 px-4 flex flex-wrap items-center justify-center gap-3">
+          <span>
+            Admin đang xem với tư cách:{' '}
+            <b className="font-bold">{getAdminImpersonateTargetEmail() || storefrontBuyerEmail}</b>
+          </span>
+          <button
+            type="button"
+            onClick={() => {
+              clearAdminImpersonateFlag();
+              window.location.href = '/admin/panel';
+            }}
+            className="px-3 py-1 rounded-lg bg-white/20 hover:bg-white/30 text-[11px] font-bold"
+          >
+            Thoát chế độ admin
+          </button>
+        </div>
+      )}
       <header className="bg-emerald-500 shadow-md border-b border-emerald-600/25">
         <div className="max-w-[2000px] mx-auto px-8 min-h-16 flex items-center justify-between gap-8">
           {/* Left: Logo + Nav */}
@@ -5084,7 +5244,12 @@ export const HomeView = ({
             onBack={() => setStorefrontOrderDetailId(null)}
           />
         ) : (
-          <OrderDetailView order={detailOrder} onBack={() => setStorefrontOrderDetailId(null)} />
+          <OrderDetailView
+            order={detailOrder}
+            onBack={() => setStorefrontOrderDetailId(null)}
+            onReportDefectiveItems={handleReportDefectiveItems}
+            onUploadDefectiveItems={handleUploadDefectiveItems}
+          />
         )
       ) : selectedProduct ? (
         <ProductDetailView
@@ -5093,6 +5258,7 @@ export const HomeView = ({
           walletBalanceVnd={walletBalanceVnd}
           setWalletBalanceVnd={setWalletBalanceVnd}
           setAllOrders={setAllOrders}
+          allOrders={allOrders}
           storefrontMenuLine={activeStorefrontLine}
           storefrontAdminGianHangCategories={storefrontAdminGianHangCategories}
           onFulfillPurchase={onFulfillPurchase}
@@ -5171,6 +5337,13 @@ export const HomeView = ({
           selfDisplayName={storefrontHeaderDisplayName}
           threads={messageThreads}
           initialThreadId={messagesInitialThreadId}
+          orders={allOrders}
+          patchOrderById={(orderId, patch) => {
+            setAllOrders(prev =>
+              prev.map(o => (o.id === orderId ? { ...o, ...patch } : o))
+            );
+          }}
+          setOrders={setAllOrders}
         />
       ) : storefrontPage === 'my-orders' && isStorefrontBuyerMode ? (
         detailOrder ? (
@@ -5181,7 +5354,12 @@ export const HomeView = ({
               onBack={backFromPurchasedOrderDetail}
             />
           ) : (
-            <OrderDetailView order={detailOrder} onBack={backFromPurchasedOrderDetail} />
+            <OrderDetailView
+              order={detailOrder}
+              onBack={backFromPurchasedOrderDetail}
+              onReportDefectiveItems={handleReportDefectiveItems}
+              onUploadDefectiveItems={handleUploadDefectiveItems}
+            />
           )
         ) : (
           <div className="max-w-[2000px] mx-auto px-6 py-6 pb-16">
@@ -5212,6 +5390,30 @@ export const HomeView = ({
               onOrderClick={openPurchasedOrderDetail}
               statusFilter={purchasedOrdersStatusFilter}
               onStatusFilterChange={setPurchasedOrdersStatusFilter}
+              onGianHangClick={(order) => {
+                const gid = order.adminGianHangId?.trim();
+                if (!gid) return;
+                const cat = findStorefrontAdminGianHangById(storefrontAdminGianHangCategories, gid);
+                if (!cat) return;
+                const product = storefrontAdminGianHangToProduct(cat);
+                if (!product) return;
+                setStorefrontOrderDetailId(null);
+                setStorefrontPage('shop');
+                setSelectedProduct(product);
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }}
+              onMessageSeller={(order) => {
+                const threadId = resolveBuyerSellerThreadIdFromOrder(order);
+                if (!threadId) return;
+                setMessagesProductSeed({
+                  sellerName: order.sellerName,
+                  storeName: order.categoryName,
+                });
+                openMessagesPage(threadId);
+              }}
+              messagingOwnerEmail={storefrontBuyerEmail}
+              messagingLogin={getSessionLoginUsername() || storefrontBuyerName}
+              messagingDisplayName={storefrontHeaderDisplayName}
             />
           </div>
         )
@@ -5549,20 +5751,20 @@ export const HomeView = ({
             {!isStorefrontResellerMode && (
               <div className="flex flex-wrap gap-4 mb-8">
                 {isStorefrontSellerMode && (
-                  <PaymentHistorySummaryCard
-                    label="KHẢ DỤNG RÚT"
-                    amount={sellerWalletVnd.toLocaleString('vi-VN')}
-                    icon={Wallet}
-                    colorClass="bg-emerald-50 text-emerald-600"
-                  />
-                )}
-                {!isStorefrontCustomerMode && (
-                  <PaymentHistorySummaryCard
-                    label="ĐÃ RÚT"
-                    amount="12,500,000"
-                    icon={TrendingUp}
-                    colorClass="bg-orange-50 text-orange-500"
-                  />
+                  <>
+                    <PaymentHistorySummaryCard
+                      label="KHẢ DỤNG RÚT"
+                      amount={sellerAvailableWithdrawVnd.toLocaleString('vi-VN')}
+                      icon={Wallet}
+                      colorClass="bg-emerald-50 text-emerald-600"
+                    />
+                    <PaymentHistorySummaryCard
+                      label="ĐÃ RÚT"
+                      amount={sellerWithdrawnTotalVnd.toLocaleString('vi-VN')}
+                      icon={TrendingUp}
+                      colorClass="bg-orange-50 text-orange-500"
+                    />
+                  </>
                 )}
                 <PaymentHistorySummaryCard
                   label="TỔNG TIỀN TẠM GIỮ"
@@ -5595,8 +5797,17 @@ export const HomeView = ({
                 <div className="p-6 flex justify-between items-center border-b border-slate-50">
                   <h2 className="text-xl font-bold text-slate-800">Lịch sử rút tiền</h2>
                   <button
+                    type="button"
+                    disabled={!isStorefrontSellerMode || sellerAvailableWithdrawVnd <= 0}
+                    title={
+                      !isStorefrontSellerMode
+                        ? 'Chỉ người bán mới rút được doanh thu đã giải phóng'
+                        : sellerAvailableWithdrawVnd <= 0
+                          ? 'Chưa có số dư khả dụng rút'
+                          : undefined
+                    }
                     onClick={() => setPaymentHistoryIsWithdrawModalOpen(true)}
-                    className="px-6 py-2 bg-emerald-600 text-white rounded-full text-sm font-bold hover:bg-emerald-700 transition-colors shadow-sm"
+                    className="px-6 py-2 bg-emerald-600 text-white rounded-full text-sm font-bold hover:bg-emerald-700 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     Tạo yêu cầu rút tiền
                   </button>
@@ -5800,7 +6011,9 @@ export const HomeView = ({
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-50">
-                        {PAYMENT_HISTORY_MOCK_WITHDRAWALS.slice((paymentHistoryCurrentPage - 1) * 10, paymentHistoryCurrentPage * 10).map((item) => (
+                        {sellerWithdrawTableRows
+                          .slice((paymentHistoryCurrentPage - 1) * 10, paymentHistoryCurrentPage * 10)
+                          .map(item => (
                           <tr key={item.id} className="hover:bg-slate-50/50 transition-colors group">
                             <td className="px-6 py-5 text-sm text-slate-600 font-medium">{item.date}</td>
                             <td className="px-6 py-5">
@@ -5808,8 +6021,8 @@ export const HomeView = ({
                                 Rút tiền
                               </span>
                             </td>
-                            <td className="px-6 py-5 text-sm font-bold text-slate-900">
-                              {item.amount.toLocaleString()}
+                            <td className="px-6 py-5 text-sm font-bold text-slate-900 tabular-nums">
+                              {item.amount.toLocaleString('vi-VN')}đ
                             </td>
                             <td className="px-6 py-5">
                               <PaymentHistoryWithdrawStatusBadge status={item.status} />
@@ -5817,6 +6030,15 @@ export const HomeView = ({
                             <td className="px-6 py-5 text-sm text-slate-700">{item.description}</td>
                           </tr>
                         ))}
+                        {sellerWithdrawTableRows.length === 0 && (
+                          <tr>
+                            <td colSpan={5} className="px-6 py-12 text-center text-sm text-slate-500">
+                              {isStorefrontSellerMode
+                                ? 'Chưa có lần rút tiền. Doanh thu đơ Hoàn thành sẽ cộng vào khả dụng rút.'
+                                : 'Chưa có yêu cầu rút tiền.'}
+                            </td>
+                          </tr>
+                        )}
                       </tbody>
                     </>
                   )}
@@ -5839,10 +6061,13 @@ export const HomeView = ({
             </div>
           </div>
 
-          {!isStorefrontCustomerMode && (
-            <PaymentHistoryWithdrawModal
-              isOpen={paymentHistoryIsWithdrawModalOpen}
+          {isStorefrontSellerMode && (
+            <SellerWithdrawModal
+              open={paymentHistoryIsWithdrawModalOpen}
               onClose={() => setPaymentHistoryIsWithdrawModalOpen(false)}
+              sellerEmail={storefrontBuyerEmail}
+              withdrawableVnd={sellerAvailableWithdrawVnd}
+              onSuccess={handleSellerWithdrawSuccess}
             />
           )}
         </div>

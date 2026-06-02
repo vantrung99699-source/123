@@ -7,12 +7,17 @@ export function isSellerStoreAdminPath(pathname: string): boolean {
     pathname === '/admin/' ||
     pathname.startsWith('/admin/gian-hang') ||
     pathname === '/admin/orders/products' ||
-    pathname.startsWith('/admin/orders/products')
+    pathname.startsWith('/admin/orders/products') ||
+    pathname === '/admin/thong-ke' ||
+    pathname.startsWith('/admin/thong-ke')
   );
 }
 
-/** View admin shell cho người bán (chỉ gian hàng + đơn sản phẩm). */
-export function sellerStoreAdminShellView(pathname: string): 'gian-hang' | 'don-hang' {
+/** View admin shell cho người bán (gian hàng + đơn SP + thống kê). */
+export function sellerStoreAdminShellView(pathname: string): 'gian-hang' | 'don-hang' | 'thong-ke' {
+  if (pathname === '/admin/thong-ke' || pathname.startsWith('/admin/thong-ke')) {
+    return 'thong-ke';
+  }
   if (
     pathname === '/admin/orders/products' ||
     pathname.startsWith('/admin/orders/products')
@@ -27,6 +32,7 @@ export type AdminShellView =
   | 'don-hang'
   | 'don-hang-dich-vu'
   | 'don-hang-khieu-nai'
+  | 'thong-ke'
   | 'quan-ly-reseller'
   | 'danh-gia'
   | 'ma-giam-gia'
@@ -41,6 +47,7 @@ export function pathToAdminShellView(pathname: string): AdminShellView | null {
   if (pathname === '/admin/orders' || pathname.startsWith('/admin/orders/products')) return 'don-hang';
   if (pathname.startsWith('/admin/orders/services')) return 'don-hang-dich-vu';
   if (pathname.startsWith('/admin/orders/complaints')) return 'don-hang-khieu-nai';
+  if (pathname === '/admin/thong-ke' || pathname.startsWith('/admin/thong-ke')) return 'thong-ke';
   if (pathname.startsWith('/admin/reseller')) return 'quan-ly-reseller';
   if (pathname.startsWith('/admin/reviews')) return 'danh-gia';
   if (pathname.startsWith('/admin/discount-codes')) return 'ma-giam-gia';
@@ -61,6 +68,8 @@ export function adminShellViewToPath(view: AdminShellView): string {
       return '/admin/orders/services';
     case 'don-hang-khieu-nai':
       return '/admin/orders/complaints';
+    case 'thong-ke':
+      return '/admin/thong-ke';
     case 'quan-ly-reseller':
       return '/admin/reseller';
     case 'danh-gia':

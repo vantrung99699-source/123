@@ -1,5 +1,6 @@
 import type { Order } from '../ordersTypes';
 import { getOrderFeeBasisTotalVnd } from '../orderRefund';
+import { isWarrantyReplacementOrder } from './warrantyOffer';
 import { formatVnd, parsePriceToVndNumber } from '../orderAmountDisplay';
 import {
   parsePlatformFeePercent,
@@ -44,6 +45,7 @@ export function buildPlatformFeeFieldsForCheckout(
 
 /** Số tiền phí sàn thực tế — tính từ % + tổng đơn; fallback `platformFee` đã lưu. */
 export function getOrderPlatformFeeVnd(order: Order): number {
+  if (isWarrantyReplacementOrder(order)) return 0;
   const stored = parsePriceToVndNumber(order.platformFee || '0');
   if (order.checkoutPaid || order.platformFeePercent != null) {
     const pct = effectivePlatformFeePercent(order.platformFeePercent);

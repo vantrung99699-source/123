@@ -4,6 +4,8 @@
  */
 import { listStorefrontSignups, type StoredStorefrontSignup } from '../auth/storefrontDemoAccounts';
 import { getAdminUserBalanceVnd } from '../auth/storefrontWalletByEmail';
+import { getStorefrontHoVaTenForEmail } from '../auth/storefrontHoVaTenByEmail';
+import { isAdminUserBanned } from './userProfileAdmin';
 import type { AdminUser } from './types';
 
 const SF_AVATAR_COLORS = [
@@ -42,21 +44,27 @@ function formatRegisteredAt(iso?: string): string {
   });
 }
 
+function resolveAdminUserStatus(email: string, fallback: AdminUser['status']): AdminUser['status'] {
+  if (isAdminUserBanned(email)) return 'Bị cấm';
+  return fallback;
+}
+
 function signupToAdminUser(s: StoredStorefrontSignup, stt: number): AdminUser {
   const wallet = getAdminUserBalanceVnd(s.email, 0);
   const slug = s.email.replace(/[^a-z0-9]/gi, '').slice(0, 12).toUpperCase() || 'USER';
+  const hoVaTen = getStorefrontHoVaTenForEmail(s.email);
   return {
     id: `sf-${s.email}`,
     stt,
     userId: `SF-${slug}`,
     username: s.username,
     createdAt: formatRegisteredAt(s.registeredAtIso),
-    name: s.username,
+    name: hoVaTen || s.username,
     email: s.email,
     balance: formatVndAdmin(wallet),
     totalDeposit: '0 đ',
     totalSpent: '0 đ',
-    status: 'Hoạt động',
+    status: resolveAdminUserStatus(s.email, 'Hoạt động'),
     avatarColor: SF_AVATAR_COLORS[Math.abs(hashEmail(s.email)) % SF_AVATAR_COLORS.length],
     userSource: 'storefront_signup',
   };
@@ -71,11 +79,14 @@ export function mergeAdminUsersWithStorefront(mockUsers: AdminUser[]): AdminUser
     .filter((u) => !signupEmails.has(u.email.trim().toLowerCase()))
     .map((u, i) => {
       const fallback = parseVndStatic(u.balance);
+      const hoVaTen = getStorefrontHoVaTenForEmail(u.email);
       return {
         ...u,
         stt: storefrontRows.length + i + 1,
         userSource: 'mock' as const,
+        name: hoVaTen || u.name,
         balance: formatVndAdmin(getAdminUserBalanceVnd(u.email, fallback)),
+        status: resolveAdminUserStatus(u.email, u.status),
       };
     });
   return [...storefrontRows, ...mockFiltered];

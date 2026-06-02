@@ -151,6 +151,9 @@ export function buildStorefrontMessageThreads(input: BuildMessageThreadsInput): 
           : undefined,
         lastOrderId: latest?.id,
         lastProductName: latest?.productName,
+        lastOrderQuantity: latest?.quantity,
+        lastOrderTotalAmount: latest?.totalAmount,
+        lastOrderPurchaseDate: latest?.purchaseDate,
         orderCount: ordersForThread.length,
         ...extra,
       },
@@ -200,6 +203,9 @@ export function buildStorefrontMessageThreads(input: BuildMessageThreadsInput): 
           platform: latest?.platform,
           lastOrderId: latest?.id,
           lastProductName: latest?.productName,
+          lastOrderQuantity: latest?.quantity,
+          lastOrderTotalAmount: latest?.totalAmount,
+          lastOrderPurchaseDate: latest?.purchaseDate,
           orderCount: ordersForThread.length,
         },
       });
@@ -219,6 +225,11 @@ export function buildStorefrontMessageThreads(input: BuildMessageThreadsInput): 
             orderCount: Math.max(existing.partner.orderCount, demoPartner.orderCount),
             lastOrderId: existing.partner.lastOrderId ?? demoPartner.lastOrderId,
             lastProductName: existing.partner.lastProductName ?? demoPartner.lastProductName,
+            lastOrderQuantity: existing.partner.lastOrderQuantity ?? demoPartner.lastOrderQuantity,
+            lastOrderTotalAmount:
+              existing.partner.lastOrderTotalAmount ?? demoPartner.lastOrderTotalAmount,
+            lastOrderPurchaseDate:
+              existing.partner.lastOrderPurchaseDate ?? demoPartner.lastOrderPurchaseDate,
             storeName: existing.partner.storeName ?? demoPartner.storeName,
             avatarUrl: existing.partner.avatarUrl ?? demoPartner.avatarUrl,
           }
@@ -250,4 +261,15 @@ export function buildStorefrontMessageThreads(input: BuildMessageThreadsInput): 
   });
 
   return threads;
+}
+
+/** Hội thoại buyer ↔ seller từ đơn (dùng mở Nhắn tin từ admin / đánh giá). */
+export function resolveBuyerSellerThreadIdFromOrder(order: {
+  buyerName?: string;
+  sellerName?: string;
+}): string | null {
+  const buyer = order.buyerName?.trim();
+  const seller = order.sellerName?.trim();
+  if (!buyer || !seller) return null;
+  return buildBuyerSellerThreadId(buyer, seller);
 }
