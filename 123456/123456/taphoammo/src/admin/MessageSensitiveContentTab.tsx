@@ -1,7 +1,7 @@
 /**
  * Tab quản lý từ khóa / nội dung nhạy cảm trong chat.
  */
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { motion } from 'motion/react';
 import {
   Plus,
@@ -14,18 +14,24 @@ import {
   ToggleRight,
   Search,
   AlertTriangle,
+  Users,
 } from 'lucide-react';
 import type { Conversation } from './types';
 import {
   type SensitiveFilterSettings,
   type SensitiveKeywordRule,
   type SensitiveRuleCategory,
+  type BulkSimilarFlag,
   getSensitiveCategoryLabel,
   readSensitiveFilterSettings,
   writeSensitiveFilterSettings,
   scanMessageForSensitive,
   defaultSensitiveFilterSettings,
+  detectBulkSimilarMessages,
+  notifyAdminBulkSimilarFlags,
 } from './chatSensitiveFilter';
+
+type FlagListMode = 'all' | 'keyword' | 'bulk';
 
 const CATEGORY_OPTIONS: { value: SensitiveRuleCategory; label: string }[] = [
   { value: 'phone', label: 'Số điện thoại' },
@@ -117,6 +123,7 @@ export function MessageSensitiveContentTab({
   const [newCategory, setNewCategory] = useState<SensitiveRuleCategory>('custom');
   const [flagSearch, setFlagSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<string>('Tất cả');
+  const [listMode, setListMode] = useState<FlagListMode>('all');
 
   const persist = (next: SensitiveFilterSettings) => {
     setSettings(next);
@@ -125,6 +132,32 @@ export function MessageSensitiveContentTab({
   };
 
   const flagged = useMemo(() => buildFlaggedMessages(chats, settings), [chats, settings]);
+
+  const bulkFlags = useMemo(
+    () => detectBulkSimilarMessages(chats, settings),
+    [chats, settings]
+  );
+
+  useEffect(() => {
+    notifyAdminBulkSimilarFlags(bulkFlags, settings);
+  }, [bulkFlags, settings.notifyAdminOnBulkSimilar, settings.detectBulkSimilar]);
+
+  const filteredBulk = useMemo(() => {
+    const q = flagSearch.toLowerCase().trim();
+    return bulkFlags.filter(row => {
+      if (!q) return true;
+      return (
+        row.sender.toLowerCase().includes(q) ||
+        row.templateText.toLowerCase().includes(q) ||
+        row.recipients.some(
+          r =>
+            r.recipient.toLowerCase().includes(q) ||
+            r.text.toLowerCase().includes(q) ||
+            r.chatLabel.toLowerCase().includes(q)
+        )
+      );
+    });
+  }, [bulkFlags, flagSearch]);
 
   const filteredFlagged = useMemo(() => {
     const q = flagSearch.toLowerCase().trim();
@@ -220,6 +253,80 @@ export function MessageSensitiveContentTab({
                 persist({ ...settings, detectObfuscation: !settings.detectObfuscation })
               }
             />
+            <ToggleRow
+              label="Spam cùng nội dung (đa người)"
+              desc="1 tài khoản nhắn gần giống cho nhiều người — chỉ đổi vài ký tự"
+              on={settings.detectBulkSimilar}
+              onToggle={() =>
+                persist({ ...settings, detectBulkSimilar: !settings.detectBulkSimilar })
+              }
+            />
+          </div>
+        </section>
+
+        <section className="bg-white rounded-3xl border border-slate-100 shadow-sm p-5">
+          <div className="flex items-center gap-2 mb-3">
+            <Users className="text-orange-600" size={18} />
+            <h3 className="font-bold text-slate-900 text-sm">Cài đặt spam đa người</h3>
+          </div>
+          <p className="text-xs text-slate-500 mb-3">
+            VD: nhắn 2 hoặc 3 người cùng nội dung (lệch vài chữ) → báo admin.
+          </p>
+          <div className="space-y-3">
+            <label className="block space-y-1">
+              <span className="text-xs font-bold text-slate-600">Số người nhận tối thiểu</span>
+              <input
+                type="number"
+                min={2}
+                max={50}
+                disabled={!settings.detectBulkSimilar}
+                value={settings.bulkSimilarMinRecipients}
+                onChange={e =>
+                  persist({
+                    ...settings,
+                    bulkSimilarMinRecipients: Math.min(
+                      50,
+                      Math.max(2, Number(e.target.value) || 2)
+                    ),
+                  })
+                }
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold disabled:opacity-50"
+              />
+            </label>
+            <label className="block space-y-1">
+              <span className="text-xs font-bold text-slate-600">
+                Độ giống nội dung (%)
+              </span>
+              <input
+                type="number"
+                min={50}
+                max={99}
+                disabled={!settings.detectBulkSimilar}
+                value={Math.round(settings.bulkSimilarThreshold * 100)}
+                onChange={e =>
+                  persist({
+                    ...settings,
+                    bulkSimilarThreshold: Math.min(
+                      0.99,
+                      Math.max(0.5, (Number(e.target.value) || 85) / 100)
+                    ),
+                  })
+                }
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold disabled:opacity-50"
+              />
+              <span className="text-[10px] text-slate-400">85% = chỉ khác vài ký tự</span>
+            </label>
+            <ToggleRow
+              label="Thông báo admin khi phát hiện"
+              desc="Mỗi cụm spam chỉ báo một lần trong phiên làm việc"
+              on={settings.notifyAdminOnBulkSimilar}
+              onToggle={() =>
+                persist({
+                  ...settings,
+                  notifyAdminOnBulkSimilar: !settings.notifyAdminOnBulkSimilar,
+                })
+              }
+            />
           </div>
         </section>
 
@@ -313,12 +420,37 @@ export function MessageSensitiveContentTab({
                 Tin nhắn vi phạm / nghi ngờ
               </h3>
               <p className="text-xs text-slate-500 mt-0.5">
-                Quét toàn bộ hội thoại demo — SĐT, Zalo, liên hệ, web khác, chơi chữ
+                SĐT, Zalo, link, chơi chữ và spam cùng nội dung gửi nhiều người
               </p>
             </div>
-            <span className="px-3 py-1 rounded-full bg-rose-50 text-rose-700 text-xs font-bold border border-rose-100">
-              {filteredFlagged.length} / {flagged.length} tin
-            </span>
+            <div className="flex flex-wrap gap-2">
+              <span className="px-3 py-1 rounded-full bg-rose-50 text-rose-700 text-xs font-bold border border-rose-100">
+                Từ khóa: {filteredFlagged.length}/{flagged.length}
+              </span>
+              <span className="px-3 py-1 rounded-full bg-orange-50 text-orange-700 text-xs font-bold border border-orange-100">
+                Spam đa người: {filteredBulk.length}/{bulkFlags.length}
+              </span>
+            </div>
+          </div>
+          <div className="flex bg-slate-100 p-1 rounded-xl mb-3 w-fit">
+            {(
+              [
+                ['all', 'Tất cả'],
+                ['keyword', 'Từ khóa / SĐT'],
+                ['bulk', 'Spam đa người'],
+              ] as const
+            ).map(([mode, label]) => (
+              <button
+                key={mode}
+                type="button"
+                onClick={() => setListMode(mode)}
+                className={`px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all ${
+                  listMode === mode ? 'bg-white text-rose-600 shadow-sm' : 'text-slate-500'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
           </div>
           <div className="flex flex-wrap gap-2">
             <div className="relative flex-1 min-w-[200px]">
@@ -331,29 +463,194 @@ export function MessageSensitiveContentTab({
                 className="w-full pl-9 pr-3 py-2 bg-slate-50 rounded-xl text-xs outline-none focus:ring-2 focus:ring-blue-500/20"
               />
             </div>
-            <select
-              value={categoryFilter}
-              onChange={e => setCategoryFilter(e.target.value)}
-              className="text-xs font-bold bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 outline-none"
-            >
-              <option value="Tất cả">Mọi loại vi phạm</option>
-              {CATEGORY_OPTIONS.map(o => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
+            {listMode !== 'bulk' ? (
+              <select
+                value={categoryFilter}
+                onChange={e => setCategoryFilter(e.target.value)}
+                className="text-xs font-bold bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 outline-none"
+              >
+                <option value="Tất cả">Mọi loại vi phạm</option>
+                {CATEGORY_OPTIONS.map(o => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            ) : null}
           </div>
         </div>
 
         <div className="flex-1 overflow-y-auto">
-          {filteredFlagged.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full py-16 text-slate-400 px-6 text-center">
-              <ShieldAlert size={40} className="mb-3 opacity-30" />
-              <p className="text-sm font-medium">Không có tin nhắn khớp quy tắc hiện tại.</p>
-              <p className="text-xs mt-1">Bật thêm quy tắc hoặc thêm từ khóa bên trái.</p>
-            </div>
-          ) : (
+          {listMode === 'bulk' ? (
+            filteredBulk.length === 0 ? (
+              <EmptyFlagState bulk />
+            ) : (
+              <BulkSimilarTable
+                rows={filteredBulk}
+                onOpenConversation={onOpenConversation}
+              />
+            )
+          ) : null}
+
+          {listMode === 'keyword' ? (
+            filteredFlagged.length === 0 ? (
+              <EmptyFlagState />
+            ) : (
+              <KeywordFlagTable
+                rows={filteredFlagged}
+                onOpenConversation={onOpenConversation}
+              />
+            )
+          ) : null}
+
+          {listMode === 'all' ? (
+            filteredFlagged.length === 0 && filteredBulk.length === 0 ? (
+              <EmptyFlagState />
+            ) : (
+              <>
+                {filteredBulk.length > 0 ? (
+                  <div className="border-b border-slate-100">
+                    <p className="px-4 py-2 text-[10px] font-bold text-orange-600 uppercase bg-orange-50/50">
+                      Spam cùng nội dung — đa người
+                    </p>
+                    <BulkSimilarTable
+                      rows={filteredBulk}
+                      onOpenConversation={onOpenConversation}
+                      compact
+                    />
+                  </div>
+                ) : null}
+                {filteredFlagged.length > 0 ? (
+                  <>
+                    {filteredBulk.length > 0 ? (
+                      <p className="px-4 py-2 text-[10px] font-bold text-rose-600 uppercase bg-rose-50/30">
+                        Từ khóa / SĐT / link
+                      </p>
+                    ) : null}
+                    <KeywordFlagTable
+                      rows={filteredFlagged}
+                      onOpenConversation={onOpenConversation}
+                    />
+                  </>
+                ) : null}
+              </>
+            )
+          ) : null}
+        </div>
+
+        <div className="px-5 py-3 border-t border-slate-100 bg-slate-50/50 shrink-0 flex flex-wrap gap-4 text-[10px] text-slate-500">
+          <span className="flex items-center gap-1">
+            <Phone size={12} /> SĐT / hotline
+          </span>
+          <span className="flex items-center gap-1">
+            <MessageCircleWarning size={12} /> Zalo, Telegram, liên hệ
+          </span>
+          <span className="flex items-center gap-1">
+            <Link2 size={12} /> Link website ngoài sàn
+          </span>
+          <span className="flex items-center gap-1">
+            <Users size={12} /> Cùng nội dung → nhiều người
+          </span>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function EmptyFlagState({ bulk }: { bulk?: boolean }) {
+  return (
+    <div className="flex flex-col items-center justify-center h-full py-16 text-slate-400 px-6 text-center">
+      <ShieldAlert size={40} className="mb-3 opacity-30" />
+      <p className="text-sm font-medium">
+        {bulk ? 'Không phát hiện spam đa người.' : 'Không có tin nhắn khớp quy tắc hiện tại.'}
+      </p>
+      <p className="text-xs mt-1">
+        {bulk
+          ? 'Giảm số người tối thiểu hoặc độ giống % bên trái để nhạy hơn.'
+          : 'Bật thêm quy tắc hoặc thêm từ khóa bên trái.'}
+      </p>
+    </div>
+  );
+}
+
+function BulkSimilarTable({
+  rows,
+  onOpenConversation,
+  compact,
+}: {
+  rows: BulkSimilarFlag[];
+  onOpenConversation?: (chatId: string) => void;
+  compact?: boolean;
+}) {
+  return (
+    <table className="w-full text-left">
+      <thead className="sticky top-0 bg-orange-50/90 z-10">
+        <tr className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+          <th className="px-4 py-3">Tài khoản gửi</th>
+          <th className="px-4 py-3">Số người nhận</th>
+          <th className="px-4 py-3 min-w-[180px]">Mẫu tin</th>
+          <th className="px-4 py-3">Chi tiết</th>
+          {!compact ? <th className="px-4 py-3 w-24" /> : null}
+        </tr>
+      </thead>
+      <tbody className="divide-y divide-slate-50">
+        {rows.map(row => (
+          <motion.tr
+            key={row.id}
+            layout
+            className="hover:bg-orange-50/40 transition-colors"
+          >
+            <td className="px-4 py-3 align-top text-xs font-bold text-slate-800">{row.sender}</td>
+            <td className="px-4 py-3 align-top">
+              <span className="inline-flex px-2 py-0.5 rounded-lg bg-orange-100 text-orange-800 text-xs font-black">
+                {row.recipientCount} người
+              </span>
+              <p className="text-[10px] text-slate-500 mt-1">
+                ~{Math.round(row.avgSimilarity * 100)}% giống
+              </p>
+            </td>
+            <td className="px-4 py-3 align-top text-xs text-slate-700 line-clamp-2">
+              {row.templateText}
+            </td>
+            <td className="px-4 py-3 align-top">
+              <ul className="space-y-1.5 max-h-32 overflow-y-auto">
+                {row.recipients.map(r => (
+                  <li key={`${r.chatId}-${r.messageId}`} className="text-[10px] text-slate-600">
+                    <span className="font-bold text-slate-800">{r.recipient}</span>
+                    <span className="text-slate-400"> · {Math.round(r.similarity * 100)}%</span>
+                    <p className="line-clamp-1 text-slate-500">{r.text}</p>
+                  </li>
+                ))}
+              </ul>
+            </td>
+            {!compact ? (
+              <td className="px-4 py-3 align-top">
+                {onOpenConversation && row.recipients[0] ? (
+                  <button
+                    type="button"
+                    onClick={() => onOpenConversation(row.recipients[0].chatId)}
+                    className="text-[10px] font-bold text-blue-600 hover:underline whitespace-nowrap"
+                  >
+                    Mở chat
+                  </button>
+                ) : null}
+              </td>
+            ) : null}
+          </motion.tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+function KeywordFlagTable({
+  rows,
+  onOpenConversation,
+}: {
+  rows: FlaggedChatMessage[];
+  onOpenConversation?: (chatId: string) => void;
+}) {
+  return (
             <table className="w-full text-left">
               <thead className="sticky top-0 bg-slate-50/95 z-10">
                 <tr className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
@@ -365,7 +662,7 @@ export function MessageSensitiveContentTab({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
-                {filteredFlagged.map(row => (
+                {rows.map(row => (
                   <motion.tr
                     key={`${row.chatId}-${row.messageId}`}
                     layout
@@ -412,21 +709,5 @@ export function MessageSensitiveContentTab({
                 ))}
               </tbody>
             </table>
-          )}
-        </div>
-
-        <div className="px-5 py-3 border-t border-slate-100 bg-slate-50/50 shrink-0 flex flex-wrap gap-4 text-[10px] text-slate-500">
-          <span className="flex items-center gap-1">
-            <Phone size={12} /> SĐT / hotline
-          </span>
-          <span className="flex items-center gap-1">
-            <MessageCircleWarning size={12} /> Zalo, Telegram, liên hệ
-          </span>
-          <span className="flex items-center gap-1">
-            <Link2 size={12} /> Link website ngoài sàn
-          </span>
-        </div>
-      </section>
-    </div>
   );
 }

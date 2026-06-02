@@ -61,6 +61,11 @@ import {
   readSeenReviewOrderIds,
 } from './gianHang/sellerReviewNotifications';
 import { PaymentHistoryView as AdminPaymentHistoryView } from './admin/PaymentHistoryView';
+import {
+  canSellerCreateGianHang,
+  canAddProductToGianHang,
+  findGianHangLeafById as findGianHangLeafForPolicy,
+} from './admin/adminGeneralSettingsPolicy';
 import type { PaymentHistory } from './admin/types';
 import { compareOrdersNewestFirst, parsePurchaseDateToMs, type Order, type OrderStatus } from './ordersTypes';
 import {
@@ -4633,6 +4638,15 @@ export default function App() {
   const confirmCreateProduct = () => {
     if (!currentCategoryId || !newProductName || !newProductPrice) return;
 
+    const targetGian = findGianHangLeafForPolicy(categories, currentCategoryId) ?? findCategoryById(categories, currentCategoryId);
+    if (targetGian && !targetGian.isParent) {
+      const productCheck = canAddProductToGianHang(targetGian);
+      if (!productCheck.ok) {
+        if (typeof window !== 'undefined') window.alert(productCheck.message);
+        return;
+      }
+    }
+
     const newProduct: Product = {
       id: `${Date.now()}`,
       name: newProductName,
@@ -5555,6 +5569,8 @@ export default function App() {
           onCancelServiceProcessing={handleCancelServiceProcessing}
           onReportDefectiveItems={handleReportDefectiveItems}
           onUploadDefectiveItems={handleUploadDefectiveItems}
+          gianHangTop1State={gianHangTop1State}
+          onGianHangTop1StateChange={handleGianHangTop1StateChange}
         />
         {gianHangPanelToolingModals}
       </>
@@ -5614,6 +5630,7 @@ export default function App() {
         onFulfillPurchase={handleFulfillStorefrontPurchase}
         resellerRequests={resellerRequests}
         onResellerRequestsChange={setResellerRequests}
+        onAdminCategoriesSync={setCategories}
       />
     );
   }
@@ -5873,6 +5890,9 @@ export default function App() {
               onNavigateToComplaint={(orderId) =>
                 navigate(adminShellViewToPath('don-hang-khieu-nai'), { state: { focusOrderId: orderId } })
               }
+              policyCategories={categories}
+              policyAllOrders={allOrders}
+              onPolicyCategoriesChange={setCategories}
             />
           ) : currentView === 'danh-gia' ? (
             <SellerReviewsView
@@ -6110,6 +6130,17 @@ export default function App() {
                 categories.find(c => c.isParent)?.id;
 
               const parentPlatform = categories.find(c => c.id === parentId);
+
+              const sellerKey = (
+                typeof data.sellerDisplayName === 'string' && data.sellerDisplayName.trim()
+                  ? data.sellerDisplayName.trim()
+                  : getSessionLoginUsername()
+              ).slice(0, 60);
+              const gianCheck = canSellerCreateGianHang(categories, sellerKey);
+              if (!gianCheck.ok) {
+                if (typeof window !== 'undefined') window.alert(gianCheck.message);
+                return;
+              }
 
               const newCat: Category = {
                 id: Math.random().toString(36).substr(2, 9),

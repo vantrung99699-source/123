@@ -16,7 +16,8 @@ export type AdminView =
   | 'withdrawals'
   | 'notifications'
   | 'payment-history'
-  | 'seller-transaction-history';
+  | 'seller-transaction-history'
+  | 'general-settings';
 
 export type AdminUserStatus = 'Hoạt động' | 'Bị cấm' | 'Chờ xác nhận' | 'Khóa chat' | 'Nghi spam';
 

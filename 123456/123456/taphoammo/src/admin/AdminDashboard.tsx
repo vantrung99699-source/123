@@ -28,7 +28,9 @@ import { countGianHangPendingApproval } from '../gianHang/categorySectionUtils';
 import type { BusinessLine, Category, Product } from '../gianHang/types';
 import type { AdminView, PaymentHistory } from './types';
 import type { Order } from '../ordersTypes';
-import { ADMIN_NOTIFICATIONS } from './data';
+import type { GianHangTop1State } from '../gianHang/gianHangTop1Storage';
+import { GeneralSettingsView } from './GeneralSettingsView';
+import { readAdminNotifications } from './adminNotificationsStorage';
 
 const VIEW_COMPONENTS: Record<
   Exclude<
@@ -41,11 +43,12 @@ const VIEW_COMPONENTS: Record<
     | 'product-orders'
     | 'service-orders'
     | 'complaint-orders'
+    | 'top-stores'
+    | 'general-settings'
   >,
   React.FC
 > = {
   statistics: StatisticsView,
-  'top-stores': TopStoreManagementView,
   messages: MessageManagementView,
   'payment-methods': PaymentMethodsView,
   withdrawals: WithdrawalManagementView,
@@ -93,6 +96,8 @@ export function AdminDashboard({
   onCancelServiceProcessing,
   onReportDefectiveItems,
   onUploadDefectiveItems,
+  gianHangTop1State = { records: {} },
+  onGianHangTop1StateChange,
 }: {
   extraPaymentHistory?: PaymentHistory[];
   orders?: Order[];
@@ -134,10 +139,12 @@ export function AdminDashboard({
   onCancelServiceProcessing?: (orderId: string) => void;
   onReportDefectiveItems?: (orderId: string, itemIds: string[]) => void;
   onUploadDefectiveItems?: (orderId: string, payload: { text: string }) => void;
+  gianHangTop1State?: GianHangTop1State;
+  onGianHangTop1StateChange?: (next: GianHangTop1State) => void;
 }) {
   const [activeView, setActiveView] = useState<AdminView>('statistics');
   const [panelOrderDetailId, setPanelOrderDetailId] = useState<string | null>(null);
-  const notificationCount = ADMIN_NOTIFICATIONS.filter((n) => !n.read).length;
+  const notificationCount = readAdminNotifications().filter((n) => !n.read).length;
   const pendingGianHangCount = countGianHangPendingApproval(categories);
 
   const complaintOrderCount = useMemo(
@@ -173,7 +180,9 @@ export function AdminDashboard({
     activeView === 'users' ||
     activeView === 'product-orders' ||
     activeView === 'service-orders' ||
-    activeView === 'complaint-orders'
+    activeView === 'complaint-orders' ||
+    activeView === 'top-stores' ||
+    activeView === 'general-settings'
       ? null
       : VIEW_COMPONENTS[activeView];
 
@@ -293,6 +302,18 @@ export function AdminDashboard({
           ) : activeView === 'users' ? (
             <React.Fragment key="users">
               <UserManagementView orders={orders} extraPaymentHistory={extraPaymentHistory} />
+            </React.Fragment>
+          ) : activeView === 'general-settings' ? (
+            <React.Fragment key="general-settings">
+              <GeneralSettingsView categories={categories} orders={orders} />
+            </React.Fragment>
+          ) : activeView === 'top-stores' ? (
+            <React.Fragment key="top-stores">
+              <TopStoreManagementView
+                categories={categories}
+                top1State={gianHangTop1State}
+                onTop1StateChange={onGianHangTop1StateChange}
+              />
             </React.Fragment>
           ) : activeView === 'gian-hang-approval' ? (
             <React.Fragment key="gian-hang-approval">

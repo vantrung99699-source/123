@@ -3519,6 +3519,8 @@ export type HomeViewProps = {
   ) => FulfillPurchaseResult;
   resellerRequests?: ResellerRequest[];
   onResellerRequestsChange?: React.Dispatch<React.SetStateAction<ResellerRequest[]>>;
+  /** Cập nhật cây gian hàng admin (vd. tạm dừng gian khi vượt hạn khiếu nại). */
+  onAdminCategoriesSync?: (next: import('./gianHang/types').Category[]) => void;
 };
 
 function HeaderNavCategoryDropdown({
@@ -3633,6 +3635,7 @@ export const HomeView = ({
   onFulfillPurchase,
   resellerRequests = [],
   onResellerRequestsChange,
+  onAdminCategoriesSync,
 }: HomeViewProps) => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -5382,6 +5385,9 @@ export const HomeView = ({
               orders={myPurchasedOrders}
               setOrders={setMyPurchasedOrders}
               buyerDisplayName={storefrontBuyerName}
+              policyCategories={storefrontAdminGianHangCategories as import('./gianHang/types').Category[]}
+              policyAllOrders={allOrders}
+              onPolicyCategoriesChange={onAdminCategoriesSync}
               patchOrderById={(orderId, patch) => {
                 setAllOrders(prev =>
                   prev.map(o => (o.id === orderId ? { ...o, ...patch } : o))

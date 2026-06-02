@@ -15,8 +15,8 @@ import {
   X,
   Trash2,
 } from 'lucide-react';
-import { ADMIN_NOTIFICATIONS } from './data';
 import type { AdminNotification } from './types';
+import { readAdminNotifications, writeAdminNotifications } from './adminNotificationsStorage';
 
 const typeConfig: Record<AdminNotification['type'], {
   icon: React.ElementType;
@@ -32,7 +32,12 @@ const typeConfig: Record<AdminNotification['type'], {
 };
 
 export function NotificationView() {
-  const [notifications, setNotifications] = useState(ADMIN_NOTIFICATIONS);
+  const [notifications, setNotifications] = useState(() => readAdminNotifications());
+
+  const persist = (next: AdminNotification[]) => {
+    setNotifications(next);
+    writeAdminNotifications(next);
+  };
   const [filter, setFilter] = useState<'all' | 'unread'>('all');
 
   const unreadCount = notifications.filter((n) => !n.read).length;
@@ -43,15 +48,15 @@ export function NotificationView() {
   });
 
   const markAllRead = () => {
-    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+    persist(notifications.map((n) => ({ ...n, read: true })));
   };
 
   const markRead = (id: string) => {
-    setNotifications((prev) => prev.map((n) => n.id === id ? { ...n, read: true } : n));
+    persist(notifications.map((n) => (n.id === id ? { ...n, read: true } : n)));
   };
 
   const deleteNotification = (id: string) => {
-    setNotifications((prev) => prev.filter((n) => n.id !== id));
+    persist(notifications.filter((n) => n.id !== id));
   };
 
   return (

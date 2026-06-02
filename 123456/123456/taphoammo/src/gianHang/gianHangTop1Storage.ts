@@ -139,6 +139,7 @@ export interface GianHangTop1State {
 
 const STORAGE_KEY = 'taphoammo_gian_hang_top1_v1';
 const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;
+const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
 const CALENDAR_DAY_MS = 24 * 60 * 60 * 1000;
 
 function todayKey(d = new Date()): string {
@@ -173,8 +174,24 @@ export function getBoostsIn3ConsecutiveCalendarDays(
 }
 
 function pruneBoostEvents(events: number[], now = Date.now()): number[] {
-  const cutoff = now - THREE_DAYS_MS;
+  const cutoff = now - THIRTY_DAYS_MS;
   return events.filter((t) => t >= cutoff);
+}
+
+/** Đếm lượt đẩy trong N ngày gần nhất (theo mốc thời gian từng lần đẩy). */
+export function countBoostEventsInWindow(
+  record?: GianHangBoostRecord,
+  windowMs = THIRTY_DAYS_MS,
+  now = Date.now()
+): number {
+  if (!record?.boostEvents?.length) return 0;
+  const since = now - windowMs;
+  return record.boostEvents.filter((t) => t >= since && t <= now).length;
+}
+
+/** Tổng lượt đẩy trong 30 ngày gần nhất — dùng báo cáo admin panel. */
+export function getBoostsInLast30Days(record?: GianHangBoostRecord, now = Date.now()): number {
+  return countBoostEventsInWindow(record, THIRTY_DAYS_MS, now);
 }
 
 export function readGianHangTop1State(): GianHangTop1State {

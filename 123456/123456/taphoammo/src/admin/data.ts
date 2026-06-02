@@ -135,6 +135,63 @@ export const CONVERSATIONS: Conversation[] = [
     ],
     notes: [],
   },
+  {
+    id: 'c5',
+    participants: ['Shop Via XMDT', 'buyer_alpha'],
+    lastMessage: 'Add zalo minh giao hang nhanh, lh ngoai san',
+    time: '16-01',
+    unreadCount: 0,
+    tags: ['Nghi spam'],
+    status: 'Cảnh báo',
+    messages: [
+      {
+        id: 'm1',
+        sender: 'Shop Via XMDT',
+        text: 'Bạn add zalo mình giao hàng nhanh, lh ngoài sàn nhé shop',
+        time: '10:00',
+        isAdmin: false,
+      },
+    ],
+    notes: [],
+  },
+  {
+    id: 'c6',
+    participants: ['Shop Via XMDT', 'buyer_beta'],
+    lastMessage: 'Ban add zalo minh giao hang nhanh, lh ngoai san nhe',
+    time: '16-01',
+    unreadCount: 0,
+    tags: ['Nghi spam'],
+    status: 'Cảnh báo',
+    messages: [
+      {
+        id: 'm1',
+        sender: 'Shop Via XMDT',
+        text: 'Ban add zalo minh giao hang nhanh, lh ngoai san nhe shop',
+        time: '10:05',
+        isAdmin: false,
+      },
+    ],
+    notes: [],
+  },
+  {
+    id: 'c7',
+    participants: ['Shop Via XMDT', 'buyer_gamma'],
+    lastMessage: 'Bạn add zalo mình giao hàng nhanh hơn, lh ngoài sàn',
+    time: '16-01',
+    unreadCount: 1,
+    tags: ['Nghi spam'],
+    status: 'Cảnh báo',
+    messages: [
+      {
+        id: 'm1',
+        sender: 'Shop Via XMDT',
+        text: 'Bạn add zalo mình giao hàng nhanh hơn, lh ngoài sàn',
+        time: '10:08',
+        isAdmin: false,
+      },
+    ],
+    notes: [],
+  },
 ];
 
 export const TOP_STORES: TopStore[] = [

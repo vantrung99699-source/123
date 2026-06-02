@@ -27,6 +27,7 @@ import {
   ArrowLeft,
   PanelLeft,
   PanelLeftClose,
+  Settings,
 } from 'lucide-react';
 import type { AdminView } from './types';
 
@@ -50,6 +51,7 @@ interface MenuItem {
 
 const MENU_ITEMS: MenuItem[] = [
   { id: 'statistics', icon: LayoutDashboard, label: 'Thống kê' },
+  { id: 'general-settings', icon: Settings, label: 'Cài đặt chung' },
   { id: 'users', icon: Users, label: 'Quản lý người dùng' },
   { id: 'gian-hang-approval', icon: ClipboardCheck, label: 'Quản lý gian hàng' },
   { id: 'sales', icon: ShoppingBag, label: 'Quản lý bán hàng' },

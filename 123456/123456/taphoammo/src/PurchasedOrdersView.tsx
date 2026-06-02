@@ -50,6 +50,13 @@ import {
 import { resolveBuyerSellerThreadIdFromOrder } from './storefront/storefrontMessageThreads';
 import { resolveBuyerOwnerEmailForOrder } from './storefront/resolveBuyerEmail';
 import type { OrderBuyerReview } from './ordersTypes';
+import type { Category } from './gianHang/types';
+import {
+  evaluateNewComplaint,
+  runComplaintAllowedSideEffects,
+  runComplaintLimitExceededSideEffects,
+} from './admin/adminGeneralSettingsPolicy';
+import { readAdminGeneralSettings } from './admin/adminGeneralSettings';
 
 function canRateOrder(order: Order): boolean {
   if (isPreOrderAwaitingFulfillment(order)) return false;
@@ -99,6 +106,9 @@ export const PurchasedOrdersView = ({
   messagingOwnerEmail = '',
   messagingLogin = '',
   messagingDisplayName = '',
+  policyCategories,
+  policyAllOrders,
+  onPolicyCategoriesChange,
 }: {
   onOrderClick: (id: string) => void;
   orders: Order[];
@@ -124,6 +134,10 @@ export const PurchasedOrdersView = ({
   messagingOwnerEmail?: string;
   messagingLogin?: string;
   messagingDisplayName?: string;
+  /** Cây gian hàng — kiểm tra giới hạn khiếu nại (cài đặt chung). */
+  policyCategories?: Category[];
+  policyAllOrders?: Order[];
+  onPolicyCategoriesChange?: (next: Category[]) => void;
 }) => {
   const isStatusFilterControlled = onStatusFilterChange != null;
   const [internalFilter, setInternalFilter] = useState(statusFilter ?? 'Tất cả');
@@ -203,6 +217,26 @@ export const PurchasedOrdersView = ({
     const orderId = selectedOrderForComplaint.id;
     const reason = complaintReason.trim();
     const source = orders.find(o => o.id === orderId) ?? selectedOrderForComplaint;
+
+    if (policyCategories && policyAllOrders) {
+      const settings = readAdminGeneralSettings();
+      const evaluation = evaluateNewComplaint(source, policyAllOrders, policyCategories, settings);
+      if (!evaluation.allowed) {
+        if (typeof window !== 'undefined' && evaluation.message) {
+          window.alert(evaluation.message);
+        }
+        const { categories: nextCats } = runComplaintLimitExceededSideEffects(
+          source,
+          evaluation,
+          policyCategories
+        );
+        if (onPolicyCategoriesChange && nextCats !== policyCategories) {
+          onPolicyCategoriesChange(nextCats);
+        }
+        return;
+      }
+      runComplaintAllowedSideEffects(source, evaluation, policyCategories);
+    }
     applyComplaintPatch(
       orderId,
       patchWhenEnteringComplaint(source, {
