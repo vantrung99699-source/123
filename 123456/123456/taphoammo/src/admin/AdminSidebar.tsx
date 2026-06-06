@@ -39,6 +39,7 @@ interface AdminSidebarProps {
   pendingGianHangCount?: number;
   complaintOrderCount?: number;
   pendingPreOrderCount?: number;
+  pendingSellerRegistrationCount?: number;
 }
 
 interface MenuItem {
@@ -52,6 +53,7 @@ interface MenuItem {
 const SETTINGS_CHILDREN: { id: AdminView; label: string }[] = [
   { id: 'general-settings', label: 'Giới hạn & chính sách' },
   { id: 'notification-settings', label: 'Cài đặt thông báo' },
+  { id: 'seller-registrations', label: 'Đơn đăng ký bán hàng' },
 ];
 
 const MENU_ITEMS: MenuItem[] = [
@@ -128,10 +130,12 @@ function SettingsMenuGroup({
   activeView,
   onViewChange,
   collapsed,
+  pendingSellerRegistrationCount = 0,
 }: {
   activeView: AdminView;
   onViewChange: (view: AdminView) => void;
   collapsed?: boolean;
+  pendingSellerRegistrationCount?: number;
 }) {
   const isSettingsActive = SETTINGS_CHILDREN.some(c => c.id === activeView);
   const [open, setOpen] = useState(isSettingsActive);
@@ -181,18 +185,31 @@ function SettingsMenuGroup({
         <div className="ml-3 pl-3 border-l border-slate-200 space-y-0.5">
           {SETTINGS_CHILDREN.map(child => {
             const childActive = activeView === child.id;
+            const childBadge =
+              child.id === 'seller-registrations' && pendingSellerRegistrationCount > 0
+                ? pendingSellerRegistrationCount
+                : 0;
             return (
               <button
                 key={child.id}
                 type="button"
                 onClick={() => onViewChange(child.id)}
-                className={`w-full text-left px-3 py-2 rounded-lg text-[13px] font-semibold transition-all ${
+                className={`w-full flex items-center gap-2 text-left px-3 py-2 rounded-lg text-[13px] font-semibold transition-all ${
                   childActive
                     ? 'bg-blue-50 text-blue-700 border border-blue-100'
                     : 'text-slate-500 hover:bg-slate-50 hover:text-slate-700'
                 }`}
               >
-                {child.label}
+                <span className="flex-1">{child.label}</span>
+                {childBadge > 0 ? (
+                  <span
+                    className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
+                      childActive ? 'bg-blue-600 text-white' : 'bg-amber-100 text-amber-700'
+                    }`}
+                  >
+                    {childBadge}
+                  </span>
+                ) : null}
               </button>
             );
           })}
@@ -209,6 +226,7 @@ export function AdminSidebar({
   pendingGianHangCount = 0,
   complaintOrderCount = 0,
   pendingPreOrderCount = 0,
+  pendingSellerRegistrationCount = 0,
 }: AdminSidebarProps) {
   const navigate = useNavigate();
   const [isCollapsed, setIsCollapsed] = useState(false);
@@ -294,6 +312,7 @@ export function AdminSidebar({
           activeView={activeView}
           onViewChange={onViewChange}
           collapsed={isCollapsed}
+          pendingSellerRegistrationCount={pendingSellerRegistrationCount}
         />
         {MENU_ITEMS.map((item) => {
           if (item.divider) {

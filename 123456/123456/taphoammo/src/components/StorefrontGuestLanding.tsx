@@ -1,26 +1,28 @@
 import { Fragment } from 'react';
 import {
-  Mail,
-  Monitor,
-  User,
   Grid,
   TrendingUp,
   Code,
-  Cpu,
   MoreHorizontal,
-  ArrowRight,
-  Search,
-  ChevronDown,
-  Clock,
-  LayoutGrid,
-  Facebook,
-  MessageSquare,
-  Phone,
-  Info,
   Store,
+  Mail,
+  Monitor,
+  User,
+  Cpu,
+  ArrowRight,
   type LucideIcon,
 } from 'lucide-react';
+import { StorefrontLandingFooter } from './StorefrontLandingFooter';
+import type { StorefrontInfoTabId } from './StorefrontInfoPage';
 import { motion } from 'motion/react';
+import {
+  ShopHubSearchToolbar,
+  type ShopHubSearchParams,
+} from './StorefrontHubSearchToolbar';
+import {
+  ShopHubSponsoredCarousel,
+  type ShopHubSponsoredItem,
+} from './StorefrontShopHubSections';
 
 type CategoryItem = {
   id: string;
@@ -96,188 +98,107 @@ export function StorefrontCategoryHubCard({ title, icon: Icon, desc, color, comp
   );
 }
 
-export function StorefrontGuestLanding() {
+export interface StorefrontGuestLandingProps {
+  productTypesByCategory?: Record<string, string[]>;
+  serviceTypesByCategory?: Record<string, string[]>;
+  /** Chưa đăng nhập — mở form đăng ký tài khoản. */
+  onOpenRegister?: () => void;
+  onDangKyBanHang?: () => void;
+  onHubSearch?: (params: ShopHubSearchParams) => void;
+  sponsoredItems?: ShopHubSponsoredItem[];
+  onSponsoredClick?: (id: number) => void;
+  onOpenInfo?: (tab: StorefrontInfoTabId) => void;
+}
+
+export function StorefrontGuestLanding({
+  productTypesByCategory = {},
+  serviceTypesByCategory = {},
+  onOpenRegister,
+  onDangKyBanHang,
+  onHubSearch,
+  sponsoredItems = [],
+  onSponsoredClick,
+  onOpenInfo,
+}: StorefrontGuestLandingProps) {
   const scrollToId = (id: string) => {
     document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
+  const handleHubSearch = (params: ShopHubSearchParams) => {
+    if (onHubSearch) {
+      onHubSearch(params);
+      return;
+    }
+    scrollToId('guest-danh-sach-san-pham');
+  };
+
+  const handleGuestAccountAction = () => {
+    if (onOpenRegister) {
+      onOpenRegister();
+      return;
+    }
+    onDangKyBanHang?.();
   };
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 font-sans pt-[6.75rem]">
       <main className="flex-grow pb-20">
-        <section className="container mx-auto px-4 mb-16 mt-6">
-          <div className="relative overflow-hidden rounded-[1.75rem] sm:rounded-[2rem] border border-slate-200/70 bg-gradient-to-br from-white via-slate-50/95 to-emerald-50/40 p-5 sm:p-7 md:p-8 shadow-[0_20px_50px_-12px_rgba(15,23,42,0.12)] ring-1 ring-white/60">
-            <div
-              className="pointer-events-none absolute -right-24 -top-24 h-56 w-56 rounded-full bg-emerald-400/15 blur-3xl"
-              aria-hidden
-            />
-            <div
-              className="pointer-events-none absolute -bottom-20 -left-16 h-48 w-48 rounded-full bg-teal-400/10 blur-3xl"
-              aria-hidden
-            />
+        <div className="bg-slate-50 border-b border-slate-200/90">
+          <section className="max-w-[1700px] mx-auto px-6 pt-5 pb-3">
+            <div className="relative overflow-hidden rounded-[1.75rem] sm:rounded-[2rem] border border-slate-200/70 bg-gradient-to-br from-white via-slate-50/95 to-emerald-50/40 p-5 sm:p-7 md:p-8 shadow-[0_20px_50px_-12px_rgba(15,23,42,0.12)] ring-1 ring-white/60">
+              <div
+                className="pointer-events-none absolute -right-24 -top-24 h-56 w-56 rounded-full bg-emerald-400/15 blur-3xl"
+                aria-hidden
+              />
+              <div
+                className="pointer-events-none absolute -bottom-20 -left-16 h-48 w-48 rounded-full bg-teal-400/10 blur-3xl"
+                aria-hidden
+              />
 
-            <div className="relative flex flex-col gap-8 lg:flex-row lg:items-stretch lg:justify-between lg:gap-10">
-              <div className="relative z-10 min-w-0 flex-1 text-center lg:text-left">
-                <motion.p
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="text-[11px] font-bold uppercase tracking-[0.2em] text-emerald-600/90 mb-2"
-                >
-                  Chợ MMO số 1 Việt Nam
-                </motion.p>
-                <motion.h1
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.1 }}
-                  className="text-2xl sm:text-3xl lg:text-[2.35rem] font-black tracking-tight text-slate-900 font-display mb-3 leading-tight"
-                >
-                  <span className="bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 bg-clip-text text-transparent">Giao dịch </span>
-                  <span className="bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-600 bg-clip-text text-transparent">An toàn</span>
-                  <span className="bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 bg-clip-text text-transparent"> & </span>
-                  <br className="hidden lg:block" />
-                  <span className="bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-600 bg-clip-text text-transparent">Nhanh chóng</span>
-                </motion.h1>
-                <motion.p
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.2 }}
-                  className="text-sm text-slate-600 max-w-xl mx-auto lg:mx-0 leading-relaxed mb-6"
-                >
-                  Nền tảng thương mại điện tử chuyên biệt dành cho cộng đồng MMO. Mua bán tài khoản, phần mềm và dịch vụ số với sự{' '}
-                  <span className="text-slate-800 font-medium">bảo đảm tuyệt đối</span>.
-                </motion.p>
-                <motion.div
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.3 }}
-                  className="flex flex-wrap justify-center lg:justify-start gap-3"
-                >
+              <div className="relative flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between sm:gap-6">
+                <div className="min-w-0">
+                  <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-emerald-600/90 mb-2">
+                    Gian hàng trực tuyến
+                  </p>
+                  <h1 className="text-2xl sm:text-3xl md:text-[1.85rem] font-black tracking-tight text-slate-900 font-display">
+                    <span className="bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 bg-clip-text text-transparent">
+                      TapHoa
+                    </span>
+                    <span className="bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-600 bg-clip-text text-transparent">
+                      MMO
+                    </span>
+                  </h1>
+                  <p className="mt-2 text-sm text-slate-600 max-w-xl leading-relaxed">
+                    Giao dịch tài khoản game, dịch vụ MMO và tài sản kỹ thuật số{' '}
+                    <span className="text-slate-800 font-medium">an toàn, bảo mật nhất</span>.
+                  </p>
+                </div>
+                {(onOpenRegister || onDangKyBanHang) && (
                   <button
                     type="button"
-                    onClick={() => scrollToId('guest-danh-sach-san-pham')}
-                    className="inline-flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-emerald-500 via-emerald-500 to-teal-600 px-6 py-3 text-sm font-bold text-white shadow-md shadow-emerald-500/25 transition hover:brightness-[1.05] active:scale-[0.98]"
-                  >
-                    Khám phá ngay <ArrowRight size={18} aria-hidden />
-                  </button>
-                  <button
-                    type="button"
-                    className="inline-flex items-center justify-center gap-2 rounded-2xl border border-emerald-200/90 bg-white/90 px-4 py-2.5 text-sm font-bold text-emerald-800 shadow-sm ring-1 ring-emerald-500/10 transition hover:border-emerald-300 hover:bg-white hover:shadow-md hover:ring-emerald-500/20 active:scale-[0.98]"
+                    onClick={handleGuestAccountAction}
+                    className="inline-flex shrink-0 items-center justify-center gap-2 self-start rounded-2xl border border-emerald-200/90 bg-white/90 px-4 py-2.5 text-sm font-bold text-emerald-800 shadow-sm ring-1 ring-emerald-500/10 transition hover:border-emerald-300 hover:bg-white hover:shadow-md hover:ring-emerald-500/20 active:scale-[0.98] sm:self-auto"
                   >
                     <Store size={18} className="text-emerald-600" strokeWidth={2.25} aria-hidden />
                     Đăng ký bán hàng
                   </button>
-                </motion.div>
+                )}
               </div>
-              <motion.div
-                initial={{ opacity: 0, scale: 0.96 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ delay: 0.35 }}
-                className="relative z-10 w-full max-w-md shrink-0 mx-auto lg:mx-0 lg:max-w-sm lg:self-center"
-              >
-                <div className="hidden lg:grid grid-cols-2 gap-3">
-                  <div className="space-y-3 pt-4">
-                    <div className="rounded-2xl border border-slate-200/80 bg-white/90 p-5 shadow-[0_4px_20px_-6px_rgba(15,23,42,0.08)] backdrop-blur-sm -rotate-6 ring-1 ring-white/60">
-                      <div className="mb-3 flex h-8 w-8 items-center justify-center rounded-full bg-blue-500 shadow-sm">
-                        <Mail className="text-white" size={16} aria-hidden />
-                      </div>
-                      <div className="mb-2 h-1.5 w-16 rounded-full bg-slate-200/90" />
-                      <div className="h-1.5 w-10 rounded-full bg-slate-100" />
-                    </div>
-                    <div className="rounded-2xl border border-slate-200/80 bg-white/90 p-5 shadow-[0_4px_20px_-6px_rgba(15,23,42,0.08)] backdrop-blur-sm rotate-3 ring-1 ring-white/60">
-                      <div className="mb-3 flex h-8 w-8 items-center justify-center rounded-full bg-emerald-500 shadow-sm">
-                        <Monitor className="text-white" size={16} aria-hidden />
-                      </div>
-                      <div className="mb-2 h-1.5 w-12 rounded-full bg-slate-200/90" />
-                      <div className="h-1.5 w-20 rounded-full bg-slate-100" />
-                    </div>
-                  </div>
-                  <div className="space-y-3">
-                    <div className="rounded-2xl border border-slate-200/80 bg-white/90 p-5 shadow-[0_4px_20px_-6px_rgba(15,23,42,0.08)] backdrop-blur-sm rotate-6 ring-1 ring-white/60">
-                      <div className="mb-3 flex h-8 w-8 items-center justify-center rounded-full bg-purple-500 shadow-sm">
-                        <User className="text-white" size={16} aria-hidden />
-                      </div>
-                      <div className="mb-2 h-1.5 w-20 rounded-full bg-slate-200/90" />
-                      <div className="h-1.5 w-12 rounded-full bg-slate-100" />
-                    </div>
-                    <div className="rounded-2xl border border-slate-200/80 bg-white/90 p-5 shadow-[0_4px_20px_-6px_rgba(15,23,42,0.08)] backdrop-blur-sm -rotate-3 ring-1 ring-white/60">
-                      <div className="mb-3 flex h-8 w-8 items-center justify-center rounded-full bg-amber-500 shadow-sm">
-                        <Cpu className="text-white" size={16} aria-hidden />
-                      </div>
-                      <div className="mb-2 h-1.5 w-10 rounded-full bg-slate-200/90" />
-                      <div className="h-1.5 w-16 rounded-full bg-slate-100" />
-                    </div>
-                  </div>
-                </div>
-              </motion.div>
-            </div>
 
-            <div className="relative z-10 mt-6 sm:mt-7 rounded-2xl sm:rounded-3xl border border-slate-200/80 bg-white/90 p-1.5 sm:p-2 shadow-[0_4px_24px_-4px_rgba(15,23,42,0.08),inset_0_1px_0_0_rgba(255,255,255,0.9)] backdrop-blur-sm">
-              <div className="flex flex-col sm:flex-row sm:items-stretch sm:gap-1 sm:min-h-[3.25rem]">
-                <div className="group flex flex-1 items-center gap-3 min-w-0 rounded-xl sm:rounded-2xl bg-slate-50/80 px-3.5 py-3 sm:py-2.5 sm:pl-4 border border-transparent transition-colors focus-within:border-emerald-300/60 focus-within:bg-white focus-within:shadow-[0_0_0_3px_rgba(16,185,129,0.12)] sm:border-0 sm:focus-within:shadow-none sm:focus-within:bg-slate-50/80">
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-emerald-600 shadow-sm ring-1 ring-slate-100">
-                    <Search size={18} strokeWidth={2.25} aria-hidden />
-                  </span>
-                  <input
-                    type="search"
-                    placeholder="Bạn đang tìm sản phẩm gì?"
-                    className="w-full min-w-0 border-none bg-transparent text-[15px] text-slate-800 outline-none placeholder:text-slate-400 sm:text-sm"
-                  />
-                </div>
-
-                <div className="my-1 hidden h-8 w-px shrink-0 self-center bg-gradient-to-b from-transparent via-slate-200 to-transparent sm:block" aria-hidden />
-
-                <div className="relative flex min-w-0 items-center gap-2 rounded-xl bg-slate-50/60 px-3 py-2.5 transition-colors hover:bg-slate-100/80 sm:rounded-2xl sm:px-3 sm:py-0 sm:min-w-[10rem] border-b border-slate-100 sm:border-0">
-                  <LayoutGrid size={16} className="hidden shrink-0 text-emerald-600/70 sm:block" strokeWidth={2} aria-hidden />
-                  <select
-                    className="w-full min-w-0 cursor-pointer appearance-none border-none bg-transparent py-1 pr-8 text-[13px] font-semibold text-slate-700 outline-none sm:text-xs"
-                    aria-label="Loại tìm kiếm"
-                  >
-                    <option className="bg-white text-slate-800">Tùy chọn nội dung tìm kiếm</option>
-                    <option className="bg-white text-slate-800">Sản phẩm</option>
-                    <option className="bg-white text-slate-800">Dịch vụ</option>
-                    <option className="bg-white text-slate-800">Gian hàng</option>
-                  </select>
-                  <ChevronDown
-                    size={15}
-                    className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 sm:right-2"
-                    aria-hidden
-                  />
-                </div>
-
-                <div className="my-1 hidden h-8 w-px shrink-0 self-center bg-gradient-to-b from-transparent via-slate-200 to-transparent sm:block" aria-hidden />
-
-                <div className="relative flex min-w-0 items-center gap-2 rounded-xl bg-slate-50/60 px-3 py-2.5 transition-colors hover:bg-slate-100/80 sm:rounded-2xl sm:px-3 sm:py-0 sm:min-w-[8.5rem] border-b border-slate-100 sm:border-0">
-                  <Clock size={16} className="hidden shrink-0 text-emerald-600/70 sm:block" strokeWidth={2} aria-hidden />
-                  <select
-                    className="w-full min-w-0 cursor-pointer appearance-none border-none bg-transparent py-1 pr-6 text-[13px] font-semibold text-slate-700 outline-none sm:text-xs sm:pr-7"
-                    aria-label="Sắp xếp"
-                  >
-                    <option className="bg-white text-slate-800">Mới nhất</option>
-                    <option className="bg-white text-slate-800">Phổ biến</option>
-                    <option className="bg-white text-slate-800">Giá tăng dần</option>
-                    <option className="bg-white text-slate-800">Giá giảm dần</option>
-                  </select>
-                  <ChevronDown
-                    size={15}
-                    className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 sm:right-2"
-                    aria-hidden
-                  />
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => scrollToId('guest-danh-sach-san-pham')}
-                  className="mt-2 flex shrink-0 items-center justify-center rounded-xl bg-gradient-to-r from-emerald-500 via-emerald-500 to-teal-600 px-6 py-3 text-sm font-bold text-white shadow-md shadow-emerald-500/25 transition hover:brightness-[1.05] active:scale-[0.98] sm:mt-0 sm:rounded-2xl sm:px-7 sm:py-2.5"
-                >
-                  Tìm kiếm
-                </button>
+              <div className="relative mt-6 sm:mt-7 rounded-2xl sm:rounded-3xl border-2 border-slate-300/90 bg-white/90 p-2 sm:p-2.5 shadow-[0_4px_24px_-4px_rgba(15,23,42,0.08),inset_0_1px_0_0_rgba(255,255,255,0.9)] backdrop-blur-sm">
+                <ShopHubSearchToolbar
+                  productTypesByCategory={productTypesByCategory}
+                  serviceTypesByCategory={serviceTypesByCategory}
+                  onSearch={handleHubSearch}
+                />
               </div>
             </div>
-          </div>
-        </section>
+          </section>
+        </div>
 
-        <section id="guest-danh-sach-san-pham" className="container mx-auto px-4 mb-20 scroll-mt-24">
-          <div className="flex flex-col items-center mb-8 text-center">
-            <h2 className="text-2xl sm:text-3xl font-black text-slate-800 mb-3 font-display flex flex-wrap items-center justify-center gap-2.5">
+        <section id="guest-danh-sach-san-pham" className="max-w-[1700px] mx-auto px-6 pb-10 mb-10 scroll-mt-24">
+          <div className="flex flex-col items-center mb-5 text-center">
+            <h2 className="text-xl sm:text-2xl font-black text-slate-800 font-display flex flex-wrap items-center justify-center gap-2.5">
               <span className="w-6 h-0.5 bg-emerald-500 rounded-full" />
               DANH SÁCH SẢN PHẨM
               <span className="w-6 h-0.5 bg-emerald-500 rounded-full" />
@@ -292,9 +213,9 @@ export function StorefrontGuestLanding() {
           </div>
         </section>
 
-        <section id="guest-danh-sach-dich-vu" className="container mx-auto px-4 mb-20 scroll-mt-24">
-          <div className="flex flex-col items-center mb-8 text-center">
-            <h2 className="text-2xl sm:text-3xl font-black text-slate-800 mb-3 font-display flex flex-wrap items-center justify-center gap-2.5">
+        <section id="guest-danh-sach-dich-vu" className="max-w-[1700px] mx-auto px-6 pb-10 mb-10 scroll-mt-24">
+          <div className="flex flex-col items-center mb-5 text-center">
+            <h2 className="text-xl sm:text-2xl font-black text-slate-800 font-display flex flex-wrap items-center justify-center gap-2.5">
               <span className="w-6 h-0.5 bg-emerald-500 rounded-full" />
               DANH SÁCH DỊCH VỤ
               <span className="w-6 h-0.5 bg-emerald-500 rounded-full" />
@@ -309,113 +230,40 @@ export function StorefrontGuestLanding() {
           </div>
         </section>
 
-        <section id="guest-gioi-thieu" className="container mx-auto px-4 mb-24 scroll-mt-24">
-          <div className="bg-emerald-50 rounded-[2.5rem] p-8 lg:p-16 border border-emerald-100 relative overflow-hidden">
-            <div className="absolute -top-24 -right-24 w-64 h-64 bg-emerald-200/30 rounded-full blur-3xl" />
-            <div className="absolute -bottom-24 -left-24 w-64 h-64 bg-emerald-200/30 rounded-full blur-3xl" />
-            <div className="relative z-10 max-w-4xl mx-auto text-center">
-              <h2 className="text-2xl lg:text-3xl font-black text-slate-800 mb-6 font-display">
-                Tạp hóa MMO - Chuyên trang thương mại điện tử sản phẩm số
+        <section id="guest-gioi-thieu" className="max-w-[1700px] mx-auto px-6 mb-24 scroll-mt-24">
+          <div className="relative overflow-hidden rounded-[2.5rem] border border-emerald-100/90 bg-gradient-to-br from-emerald-50 via-white to-amber-50/40 p-6 sm:p-8 lg:p-10 shadow-[0_20px_50px_-12px_rgba(15,23,42,0.08)]">
+            <div className="pointer-events-none absolute -top-20 -right-20 h-56 w-56 rounded-full bg-amber-200/25 blur-3xl" aria-hidden />
+            <div className="pointer-events-none absolute -bottom-16 -left-16 h-48 w-48 rounded-full bg-emerald-200/30 blur-3xl" aria-hidden />
+
+            <div className="relative z-10 flex flex-col items-center mb-6 sm:mb-8 text-center">
+              <h2 className="text-xl sm:text-2xl lg:text-3xl font-black text-slate-800 font-display flex flex-wrap items-center justify-center gap-2.5 sm:gap-3">
+                <span className="w-6 sm:w-8 h-0.5 sm:h-1 rounded-full bg-gradient-to-r from-amber-400 to-amber-500" />
+                GIAN HÀNG ĐƯỢC TÀI TRỢ
+                <span className="w-6 sm:w-8 h-0.5 sm:h-1 rounded-full bg-gradient-to-r from-amber-500 to-amber-400" />
               </h2>
-              <p className="text-slate-600 text-lg leading-relaxed mb-10">
-                Một sản phẩm từ TINSOFT, ra đời với mục đích thuận tiện và an toàn hơn trong các giao dịch mua bán sản phẩm số. Như các bạn đã biết, tình trạng lừa đảo trên mạng xã hội kéo dài bao năm qua vẫn chưa có dấu hiệu hạ nhiệt. Chúng tôi ở đây để thay đổi điều đó.
+              <p className="text-sm text-slate-600 mt-2 max-w-2xl leading-relaxed">
+                Danh sách gian hàng ưu tiên hiển thị — cam kết minh bạch, giao dịch an toàn theo chính sách TapHoaMMO.
               </p>
-              <button
-                type="button"
-                className="bg-emerald-500 hover:bg-emerald-600 text-white px-10 py-4 rounded-2xl font-bold transition-all shadow-lg shadow-emerald-200"
-              >
-                Xem thêm về chúng tôi
-              </button>
             </div>
+
+            {sponsoredItems.length > 0 ? (
+              <ShopHubSponsoredCarousel items={sponsoredItems} onSponsoredClick={onSponsoredClick} />
+            ) : (
+              <div className="relative z-10 mx-auto max-w-lg rounded-2xl border border-dashed border-emerald-200 bg-white/70 px-6 py-12 text-center">
+                <Store size={32} className="mx-auto text-emerald-500/70 mb-3" aria-hidden />
+                <p className="text-sm font-semibold text-slate-700">Chưa có gian hàng tài trợ</p>
+                <p className="text-xs text-slate-500 mt-1">Vị trí sẽ hiển thị khi admin cấu hình gian Top 1 / tài trợ.</p>
+              </div>
+            )}
           </div>
         </section>
       </main>
 
-      <footer className="bg-slate-900 text-slate-400 pt-20 pb-10 mt-auto">
-        <div className="container mx-auto px-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-12 mb-16">
-            <div className="space-y-6">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 bg-emerald-500 rounded-lg flex items-center justify-center text-white">
-                  <Store size={18} />
-                </div>
-                <span className="text-xl font-black text-white tracking-tight font-display">
-                  TapHoa<span className="text-emerald-500">MMO</span>
-                </span>
-              </div>
-              <p className="text-sm leading-relaxed">
-                Nền tảng giao dịch sản phẩm số hàng đầu cho cộng đồng MMO tại Việt Nam. An toàn, uy tín và nhanh chóng.
-              </p>
-              <div className="flex items-center gap-4">
-                <button
-                  type="button"
-                  className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center hover:bg-emerald-500 hover:text-white transition-all"
-                  aria-label="Facebook"
-                >
-                  <Facebook size={20} />
-                </button>
-                <button
-                  type="button"
-                  className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center hover:bg-emerald-500 hover:text-white transition-all"
-                  aria-label="Tin nhắn"
-                >
-                  <MessageSquare size={20} />
-                </button>
-              </div>
-            </div>
-
-            <div className="space-y-6">
-              <h3 className="text-white font-bold text-lg font-display flex items-center gap-2">
-                <Phone size={18} className="text-emerald-500" /> Liên hệ
-              </h3>
-              <ul className="space-y-4 text-sm">
-                <li className="hover:text-emerald-400 cursor-pointer transition-colors">
-                  Liên hệ ngay nếu bạn có khó khăn khi sử dụng dịch vụ hoặc cần hợp tác.
-                </li>
-                <li className="flex items-center gap-2 hover:text-emerald-400 cursor-pointer transition-colors">
-                  <MessageSquare size={16} /> Chat với hỗ trợ viên
-                </li>
-                <li className="flex items-center gap-2 hover:text-emerald-400 cursor-pointer transition-colors">
-                  <Facebook size={16} /> Tạp hóa MMO
-                </li>
-              </ul>
-            </div>
-
-            <div className="space-y-6">
-              <h3 className="text-white font-bold text-lg font-display flex items-center gap-2">
-                <Info size={18} className="text-emerald-500" /> Thông tin
-              </h3>
-              <ul className="space-y-4 text-sm">
-                <li className="hover:text-emerald-400 cursor-pointer transition-colors">
-                  Một ứng dụng nhằm kết nối, trao đổi, mua bán trong cộng đồng kiếm tiền online.
-                </li>
-                <li className="hover:text-emerald-400 cursor-pointer transition-colors">Thanh toán tự động, nhận hàng ngay tức thì.</li>
-                <li className="hover:text-emerald-400 cursor-pointer transition-colors">Câu hỏi thường gặp</li>
-                <li className="hover:text-emerald-400 cursor-pointer transition-colors">Điều khoản sử dụng</li>
-              </ul>
-            </div>
-
-            <div className="space-y-6">
-              <h3 className="text-white font-bold text-lg font-display flex items-center gap-2">
-                <Store size={18} className="text-emerald-500" /> Đăng ký bán hàng
-              </h3>
-              <p className="text-sm leading-relaxed">
-                Tạo một gian hàng của bạn trên trang của chúng tôi. Đội ngũ hỗ trợ sẽ liên lạc để giúp bạn tối ưu khả năng bán hàng.
-              </p>
-              <button
-                type="button"
-                className="w-full bg-emerald-500 hover:bg-emerald-600 text-white py-4 rounded-2xl font-bold transition-all active:scale-[0.99]"
-              >
-                Tham gia ngay
-              </button>
-            </div>
-          </div>
-
-          <div className="pt-10 border-t border-white/5 text-center text-xs">
-            <p>© 2026 TapHoaMMO. All rights reserved. Powered by TinSoft.</p>
-          </div>
-        </div>
-      </footer>
+      <StorefrontLandingFooter
+        onChatSupport={handleGuestAccountAction}
+        onJoinSeller={handleGuestAccountAction}
+        onOpenInfo={onOpenInfo}
+      />
     </div>
   );
 }

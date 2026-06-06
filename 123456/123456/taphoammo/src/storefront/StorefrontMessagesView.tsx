@@ -14,6 +14,7 @@ import {
   ChevronDown,
   ChevronUp,
   Handshake,
+  Headphones,
   Info,
   MessageCircle,
   Send,
@@ -389,10 +390,16 @@ export function StorefrontMessagesView({
     else messageElRefs.current.delete(id);
   }, []);
 
+  const platformSupportThread = useMemo(
+    () => threads.find(t => t.partner.isPlatformSupport) ?? null,
+    [threads]
+  );
+
   const filteredThreads = useMemo(() => {
     const q = threadSearch.trim();
-    if (!q) return threads;
-    return threads.filter(t =>
+    const withoutPlatform = threads.filter(t => !t.partner.isPlatformSupport);
+    if (!q) return withoutPlatform;
+    return withoutPlatform.filter(t =>
       threadMatchesSearchQuery(
         ownerEmail,
         t.id,
@@ -402,6 +409,18 @@ export function StorefrontMessagesView({
       )
     );
   }, [threads, threadSearch, ownerEmail]);
+
+  const showPlatformSupportEntry =
+    isBuyerMode &&
+    platformSupportThread &&
+    (!threadSearch.trim() ||
+      threadMatchesSearchQuery(
+        ownerEmail,
+        platformSupportThread.id,
+        platformSupportThread.partner,
+        platformSupportThread.lastPreview,
+        threadSearch.trim()
+      ));
 
   useEffect(() => {
     if (chatSearch.trim()) return;
@@ -449,13 +468,44 @@ export function StorefrontMessagesView({
               className="mt-2"
             />
           </div>
+          {showPlatformSupportEntry && platformSupportThread && (
+            <div className="px-2 py-2 border-b border-slate-100 bg-slate-50/50 shrink-0">
+              <button
+                type="button"
+                onClick={() => setActiveThreadId(platformSupportThread.id)}
+                className={`w-full text-left rounded-xl border px-3 py-3 flex gap-3 transition-all ${
+                  platformSupportThread.id === activeThreadId
+                    ? 'border-emerald-400 bg-emerald-50 shadow-sm shadow-emerald-500/10'
+                    : 'border-emerald-200/80 bg-white hover:border-emerald-300 hover:bg-emerald-50/40'
+                }`}
+              >
+                <div className="w-10 h-10 shrink-0 rounded-xl bg-emerald-500 text-white flex items-center justify-center shadow-md shadow-emerald-500/25">
+                  <Headphones size={20} />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-bold text-emerald-800">Chat với sàn</p>
+                  <p className="text-[11px] text-slate-600 mt-0.5 leading-snug">
+                    {platformSupportThread.partner.displayName} · hỗ trợ giao dịch, khiếu nại, tài khoản
+                  </p>
+                  <p className="text-[11px] text-slate-500 truncate mt-1">
+                    {platformSupportThread.lastPreview}
+                  </p>
+                </div>
+                {platformSupportThread.unreadCount > 0 && (
+                  <span className="shrink-0 min-w-[20px] h-5 px-1.5 flex items-center justify-center rounded-full bg-red-500 text-white text-[10px] font-bold tabular-nums self-center">
+                    {platformSupportThread.unreadCount > 99 ? '99+' : platformSupportThread.unreadCount}
+                  </span>
+                )}
+              </button>
+            </div>
+          )}
           <div className="flex-1 overflow-y-auto divide-y divide-slate-50">
             {threads.length === 0 ? (
               <div className="p-6 text-center text-sm text-slate-500 leading-relaxed">
                 Chưa có hội thoại.{' '}
                 Mua hàng, đổi chế độ tài khoản hoặc mở «Nhắn tin» tại sản phẩm để bắt đầu hội thoại.
               </div>
-            ) : filteredThreads.length === 0 ? (
+            ) : filteredThreads.length === 0 && !showPlatformSupportEntry ? (
               <div className="p-6 text-center text-sm text-slate-500">
                 Không tìm thấy hội thoại phù hợp.
               </div>

@@ -21,6 +21,11 @@ import {
   ensureDemoCrossModeMessages,
   getLastMessagePreview,
 } from './storefrontMessagesStorage';
+import {
+  buildSupportThreadIdForBuyerEmail,
+  TAPHOAMMO_PLATFORM_CHAT_LABEL,
+  TAPHOAMMO_SUPPORT_DISPLAY_NAME,
+} from './sellerRegistrationApprovalNotify';
 
 export type { MessagePartnerProfile } from './storefrontMessagingPersonas';
 export {
@@ -215,6 +220,23 @@ export function buildStorefrontMessageThreads(input: BuildMessageThreadsInput): 
     }
   }
 
+  if (isStorefrontBuyerAccountMode(accountMode)) {
+    const supportThreadId = buildSupportThreadIdForBuyerEmail(
+      currentEmail,
+      currentDisplayName || currentLogin
+    );
+    map.set(supportThreadId, {
+      orders: [],
+      partner: {
+        role: 'seller',
+        displayName: TAPHOAMMO_SUPPORT_DISPLAY_NAME,
+        storeName: TAPHOAMMO_PLATFORM_CHAT_LABEL,
+        orderCount: 0,
+        isPlatformSupport: true,
+      },
+    });
+  }
+
   const selfPersona = getCurrentMessagingPersona(accountMode, session);
   for (const partnerPersona of getDemoChatPartnersForMode(accountMode, session)) {
     const threadId = buildThreadIdBetweenPersonas(selfPersona, partnerPersona);
@@ -247,15 +269,20 @@ export function buildStorefrontMessageThreads(input: BuildMessageThreadsInput): 
       partner,
       lastPreview:
         last?.text ??
-        (partner.lastProductName
-          ? `Đơn ${partner.lastOrderId ?? ''} · ${partner.lastProductName}`
-          : `Tin nhắn với ${partner.displayName}`),
+        (partner.isPlatformSupport
+          ? 'Nhắn tin với đội ngũ TapHoaMMO — giao dịch, khiếu nại, tài khoản'
+          : partner.lastProductName
+            ? `Đơn ${partner.lastOrderId ?? ''} · ${partner.lastProductName}`
+            : `Tin nhắn với ${partner.displayName}`),
       lastActivityMs: last?.sentAtMs ?? 0,
       unreadCount: getThreadUnreadCount(currentEmail, id, viewerPersona.id),
     };
   });
 
   threads.sort((a, b) => {
+    const platformA = a.partner.isPlatformSupport ? 1 : 0;
+    const platformB = b.partner.isPlatformSupport ? 1 : 0;
+    if (platformB !== platformA) return platformB - platformA;
     if (b.lastActivityMs !== a.lastActivityMs) return b.lastActivityMs - a.lastActivityMs;
     const oa = a.partner.orderCount > 0 ? 1 : 0;
     const ob = b.partner.orderCount > 0 ? 1 : 0;

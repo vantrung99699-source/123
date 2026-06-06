@@ -1,48 +1,41 @@
-import { useState, useEffect, type ReactNode } from 'react';
+import { useState, useEffect, useRef, type ReactNode } from 'react';
 import { Store, ChevronDown, Menu, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { StorefrontTopBar } from './StorefrontTopBar';
+import { StorefrontHeaderNavCategoryDropdown } from './StorefrontHeaderNavCategoryDropdown';
 import { useStorefrontLocale } from '../i18n/storefrontLocale';
 
 type Props = {
   onLogoClick: () => void;
+  productCategories?: { name: string }[];
+  serviceCategories?: { name: string }[];
+  selectedCategories?: string[];
+  noCategoriesLabel?: string;
+  onSelectProductCategory?: (name: string) => void;
+  onSelectServiceCategory?: (name: string) => void;
+  onOpenFaqs?: () => void;
   /** Dùng `() => <… />` để mỗi vùng (desktop / menu mobile) có instance riêng — tránh lỗi khi gắn cùng một element hai chỗ. */
   authSlot: ReactNode | (() => ReactNode);
-};
-
-const NavItem = ({
-  children,
-  hasDropdown,
-  href,
-}: {
-  children: ReactNode;
-  hasDropdown?: boolean;
-  href?: string;
-}) => {
-  const cls =
-    'group relative flex items-center gap-1 cursor-pointer py-2 text-sm font-medium transition-colors text-white hover:text-emerald-100';
-  if (href) {
-    return (
-      <a href={href} className={cls}>
-        {children}
-        {hasDropdown && <ChevronDown size={14} className="group-hover:rotate-180 transition-transform" />}
-      </a>
-    );
-  }
-  return (
-    <div className={cls}>
-      {children}
-      {hasDropdown && <ChevronDown size={14} className="group-hover:rotate-180 transition-transform" />}
-    </div>
-  );
 };
 
 /** Chiều cao top bar (h-7) + header chính — dùng offset menu mobile & padding landing. */
 export const STOREFRONT_GUEST_HEADER_OFFSET = 'calc(1.75rem + 3.5rem)';
 
-export function StorefrontGuestHeader({ onLogoClick, authSlot }: Props) {
+export function StorefrontGuestHeader({
+  onLogoClick,
+  productCategories = [],
+  serviceCategories = [],
+  selectedCategories = [],
+  noCategoriesLabel = 'Chưa có danh mục',
+  onSelectProductCategory,
+  onSelectServiceCategory,
+  onOpenFaqs,
+  authSlot,
+}: Props) {
   const { header } = useStorefrontLocale();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [headerDropdown, setHeaderDropdown] = useState<null | 'product' | 'service'>(null);
+  const headerDropdownRef = useRef<HTMLDivElement>(null);
   const authDesktop = typeof authSlot === 'function' ? authSlot() : authSlot;
   const authMobile = typeof authSlot === 'function' ? authSlot() : authSlot;
 
@@ -54,6 +47,17 @@ export function StorefrontGuestHeader({ onLogoClick, authSlot }: Props) {
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
   }, [mobileOpen]);
+
+  useEffect(() => {
+    if (!headerDropdown) return;
+    const onDown = (e: MouseEvent) => {
+      const el = headerDropdownRef.current;
+      if (!el) return;
+      if (e.target instanceof Node && !el.contains(e.target)) setHeaderDropdown(null);
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [headerDropdown]);
 
   return (
     <>
@@ -75,19 +79,101 @@ export function StorefrontGuestHeader({ onLogoClick, authSlot }: Props) {
               <span className="text-xl font-black text-white tracking-tight font-display">TapHoaMMO</span>
             </button>
 
-            <nav className="hidden lg:flex items-center gap-6">
-              <NavItem hasDropdown href="#guest-danh-sach-san-pham">
-                {header.products}
-              </NavItem>
-              <NavItem hasDropdown href="#guest-danh-sach-dich-vu">
-                {header.services}
-              </NavItem>
-              <NavItem href="#guest-gioi-thieu">{header.support}</NavItem>
-              <NavItem href="#guest-gioi-thieu">{header.share}</NavItem>
-              <NavItem hasDropdown href="#guest-gioi-thieu">
-                {header.tools}
-              </NavItem>
-              <NavItem href="#guest-gioi-thieu">{header.faqs}</NavItem>
+            <nav
+              className="hidden lg:flex items-center gap-0.5 text-sm font-medium text-white"
+              ref={headerDropdownRef}
+            >
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setHeaderDropdown(v => (v === 'product' ? null : 'product'))}
+                  className={`px-3.5 py-2 rounded-lg transition-all flex items-center gap-1 ${
+                    headerDropdown === 'product'
+                      ? 'bg-white/20 text-white shadow-sm ring-1 ring-white/25'
+                      : 'hover:bg-white/15 hover:text-emerald-100'
+                  }`}
+                  aria-expanded={headerDropdown === 'product'}
+                  aria-haspopup="menu"
+                >
+                  {header.products}{' '}
+                  <ChevronDown
+                    size={14}
+                    className={`opacity-90 transition-transform duration-200 ${headerDropdown === 'product' ? 'rotate-180' : ''}`}
+                  />
+                </button>
+                {headerDropdown === 'product' && (
+                  <StorefrontHeaderNavCategoryDropdown
+                    variant="product"
+                    menuTitle={header.products}
+                    categories={productCategories}
+                    selectedCategories={selectedCategories}
+                    emptyLabel={noCategoriesLabel}
+                    onSelectCategory={name => {
+                      setHeaderDropdown(null);
+                      onSelectProductCategory?.(name);
+                    }}
+                  />
+                )}
+              </div>
+
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setHeaderDropdown(v => (v === 'service' ? null : 'service'))}
+                  className={`px-3.5 py-2 rounded-lg transition-all flex items-center gap-1 ${
+                    headerDropdown === 'service'
+                      ? 'bg-white/20 text-white shadow-sm ring-1 ring-white/25'
+                      : 'hover:bg-white/15 hover:text-emerald-100'
+                  }`}
+                  aria-expanded={headerDropdown === 'service'}
+                  aria-haspopup="menu"
+                >
+                  {header.services}{' '}
+                  <ChevronDown
+                    size={14}
+                    className={`opacity-90 transition-transform duration-200 ${headerDropdown === 'service' ? 'rotate-180' : ''}`}
+                  />
+                </button>
+                {headerDropdown === 'service' && (
+                  <StorefrontHeaderNavCategoryDropdown
+                    variant="service"
+                    menuTitle={header.services}
+                    categories={serviceCategories}
+                    selectedCategories={selectedCategories}
+                    emptyLabel={noCategoriesLabel}
+                    onSelectCategory={name => {
+                      setHeaderDropdown(null);
+                      onSelectServiceCategory?.(name);
+                    }}
+                  />
+                )}
+              </div>
+
+              <a
+                href="#guest-gioi-thieu"
+                className="px-3.5 py-2 rounded-lg hover:bg-white/15 hover:text-emerald-100 transition-colors"
+              >
+                {header.support}
+              </a>
+              <a
+                href="#guest-gioi-thieu"
+                className="px-3.5 py-2 rounded-lg hover:bg-white/15 hover:text-emerald-100 transition-colors"
+              >
+                {header.share}
+              </a>
+              <a
+                href="#guest-gioi-thieu"
+                className="px-3.5 py-2 rounded-lg hover:bg-white/15 hover:text-emerald-100 transition-colors flex items-center gap-1"
+              >
+                {header.tools} <ChevronDown size={14} className="opacity-90" />
+              </a>
+              <button
+                type="button"
+                onClick={onOpenFaqs}
+                className="px-3.5 py-2 rounded-lg hover:bg-white/15 hover:text-emerald-100 transition-colors"
+              >
+                {header.faqs}
+              </button>
             </nav>
           </div>
 
@@ -115,13 +201,55 @@ export function StorefrontGuestHeader({ onLogoClick, authSlot }: Props) {
               className="lg:hidden fixed inset-x-0 bottom-0 z-40 bg-slate-50 px-6 pt-6 pb-10 overflow-auto border-t border-slate-200"
             >
               <div className="flex flex-col gap-4 text-slate-800">
-                <a href="#guest-danh-sach-san-pham" onClick={() => setMobileOpen(false)} className="font-semibold">
-                  {header.products}
-                </a>
-                <a href="#guest-danh-sach-dich-vu" onClick={() => setMobileOpen(false)} className="font-semibold">
-                  {header.services}
-                </a>
-                <a href="#guest-gioi-thieu" onClick={() => setMobileOpen(false)}>
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-wide text-emerald-700 mb-2">
+                    {header.products}
+                  </p>
+                  <div className="flex flex-col gap-1">
+                    {productCategories.length === 0 ? (
+                      <p className="text-sm text-slate-500">{noCategoriesLabel}</p>
+                    ) : (
+                      productCategories.map(cat => (
+                        <button
+                          key={cat.name}
+                          type="button"
+                          onClick={() => {
+                            setMobileOpen(false);
+                            onSelectProductCategory?.(cat.name);
+                          }}
+                          className="text-left text-sm font-medium py-2 px-2 rounded-lg hover:bg-emerald-50 text-slate-800"
+                        >
+                          {cat.name}
+                        </button>
+                      ))
+                    )}
+                  </div>
+                </div>
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-wide text-violet-700 mb-2">
+                    {header.services}
+                  </p>
+                  <div className="flex flex-col gap-1">
+                    {serviceCategories.length === 0 ? (
+                      <p className="text-sm text-slate-500">{noCategoriesLabel}</p>
+                    ) : (
+                      serviceCategories.map(cat => (
+                        <button
+                          key={cat.name}
+                          type="button"
+                          onClick={() => {
+                            setMobileOpen(false);
+                            onSelectServiceCategory?.(cat.name);
+                          }}
+                          className="text-left text-sm font-medium py-2 px-2 rounded-lg hover:bg-violet-50 text-slate-800"
+                        >
+                          {cat.name}
+                        </button>
+                      ))
+                    )}
+                  </div>
+                </div>
+                <a href="#guest-gioi-thieu" onClick={() => setMobileOpen(false)} className="text-sm">
                   {header.support}
                 </a>
                 <div className="h-px bg-slate-200" />

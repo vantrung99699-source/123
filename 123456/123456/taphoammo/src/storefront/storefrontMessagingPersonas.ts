@@ -23,6 +23,8 @@ export interface MessagePartnerProfile {
   lastOrderTotalAmount?: string;
   lastOrderPurchaseDate?: string;
   orderCount: number;
+  /** Hội thoại hỗ trợ chính thức từ TapHoaMMO (chat với sàn). */
+  isPlatformSupport?: boolean;
 }
 
 function slug(s: string): string {

@@ -16,10 +16,14 @@ export type StorefrontLoginPayload = {
 
 type Props = {
   onLoginSuccess: (p: StorefrontLoginPayload) => void;
-  showSellerCta?: boolean;
+  /** Tăng giá trị để mở panel đăng ký từ component cha (vd. footer / CTA guest). */
+  openRegisterSignal?: number;
 };
 
-export function StorefrontAuthDropdown({ onLoginSuccess, showSellerCta = true }: Props) {
+export function StorefrontAuthDropdown({
+  onLoginSuccess,
+  openRegisterSignal = 0,
+}: Props) {
   const [loginOpen, setLoginOpen] = useState(false);
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
   const [afterRegisterHint, setAfterRegisterHint] = useState<string | null>(null);
@@ -48,6 +52,15 @@ export function StorefrontAuthDropdown({ onLoginSuccess, showSellerCta = true }:
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [loginOpen]);
+
+  useEffect(() => {
+    if (!openRegisterSignal) return;
+    setAfterRegisterHint(null);
+    setRegisterError(null);
+    setLoginError(null);
+    setAuthMode('register');
+    setLoginOpen(true);
+  }, [openRegisterSignal]);
 
   const openLogin = () => {
     setRegisterError(null);
@@ -135,15 +148,6 @@ export function StorefrontAuthDropdown({ onLoginSuccess, showSellerCta = true }:
 
   return (
     <div className="relative login-dropdown-container flex flex-wrap items-center justify-end gap-2 sm:gap-3">
-      {showSellerCta && (
-        <button
-          type="button"
-          className="hidden md:flex items-center gap-2 text-xs lg:text-sm font-bold text-white bg-white/10 hover:bg-white/20 px-3 lg:px-4 py-2 rounded-full border border-white/20 transition-all"
-        >
-          Đăng ký bán hàng
-        </button>
-      )}
-
       <button
         type="button"
         onClick={() => {

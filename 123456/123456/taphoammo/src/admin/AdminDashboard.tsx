@@ -31,7 +31,9 @@ import type { Order } from '../ordersTypes';
 import type { GianHangTop1State } from '../gianHang/gianHangTop1Storage';
 import { GeneralSettingsView } from './GeneralSettingsView';
 import { NotificationSettingsView } from './NotificationSettingsView';
+import { SellerRegistrationManagementView } from './SellerRegistrationManagementView';
 import { readAdminNotifications } from './adminNotificationsStorage';
+import { countPendingSellerRegistrations } from '../storefront/storefrontSellerRegistration';
 
 const VIEW_COMPONENTS: Record<
   Exclude<
@@ -47,6 +49,7 @@ const VIEW_COMPONENTS: Record<
     | 'top-stores'
     | 'general-settings'
     | 'notification-settings'
+    | 'seller-registrations'
   >,
   React.FC
 > = {
@@ -146,6 +149,7 @@ export function AdminDashboard({
 }) {
   const [activeView, setActiveView] = useState<AdminView>('statistics');
   const [panelOrderDetailId, setPanelOrderDetailId] = useState<string | null>(null);
+  const [sellerRegVersion, setSellerRegVersion] = useState(0);
   const notificationCount = readAdminNotifications().filter((n) => !n.read).length;
   const pendingGianHangCount = countGianHangPendingApproval(categories);
 
@@ -164,6 +168,11 @@ export function AdminDashboard({
           o.order_type !== 'service'
       ).length,
     [orders]
+  );
+
+  const pendingSellerRegistrationCount = useMemo(
+    () => countPendingSellerRegistrations(),
+    [sellerRegVersion, activeView]
   );
 
   const openPanelOrderDetail = useCallback((orderId: string) => {
@@ -185,7 +194,8 @@ export function AdminDashboard({
     activeView === 'complaint-orders' ||
     activeView === 'top-stores' ||
     activeView === 'general-settings' ||
-    activeView === 'notification-settings'
+    activeView === 'notification-settings' ||
+    activeView === 'seller-registrations'
       ? null
       : VIEW_COMPONENTS[activeView];
 
@@ -205,6 +215,7 @@ export function AdminDashboard({
         pendingGianHangCount={pendingGianHangCount}
         complaintOrderCount={complaintOrderCount}
         pendingPreOrderCount={pendingPreOrderCount}
+        pendingSellerRegistrationCount={pendingSellerRegistrationCount}
       />
       <main className="flex-1 min-w-0 overflow-hidden">
         {panelDetailOrder ? (
@@ -313,6 +324,10 @@ export function AdminDashboard({
           ) : activeView === 'notification-settings' ? (
             <React.Fragment key="notification-settings">
               <NotificationSettingsView />
+            </React.Fragment>
+          ) : activeView === 'seller-registrations' ? (
+            <React.Fragment key="seller-registrations">
+              <SellerRegistrationManagementView onDataChange={() => setSellerRegVersion(v => v + 1)} />
             </React.Fragment>
           ) : activeView === 'top-stores' ? (
             <React.Fragment key="top-stores">
