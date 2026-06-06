@@ -59,6 +59,7 @@ import {
 import type { ViewChatMessage } from './storefrontMessagesStorage';
 import {
   appendThreadMessage,
+  markThreadAsRead,
   readThreadMessagesForViewer,
   threadMatchesSearchQuery,
 } from './storefrontMessagesStorage';
@@ -115,6 +116,8 @@ export interface StorefrontMessagesViewProps {
   orders?: Order[];
   patchOrderById?: (orderId: string, patch: Partial<Order>) => void;
   setOrders?: Dispatch<SetStateAction<Order[]>>;
+  /** Sau khi đánh dấu đã đọc — cập nhật badge header. */
+  onUnreadChange?: () => void;
 }
 
 export function StorefrontMessagesView({
@@ -127,6 +130,7 @@ export function StorefrontMessagesView({
   orders = [],
   patchOrderById,
   setOrders,
+  onUnreadChange,
 }: StorefrontMessagesViewProps) {
   const isBuyerMode = isStorefrontBuyerAccountMode(accountMode);
   const [activeThreadId, setActiveThreadId] = useState<string | null>(
@@ -173,13 +177,15 @@ export function StorefrontMessagesView({
       setMessages([]);
       return;
     }
+    markThreadAsRead(ownerEmail, activeThread.id);
+    onUnreadChange?.();
     setMessages(
       readThreadMessagesForViewer(ownerEmail, activeThread.id, viewerPersona.id)
     );
     setMobileInfoOpen(false);
     setChatSearch('');
     setChatMatchCursor(0);
-  }, [activeThread, ownerEmail, viewerPersona.id]);
+  }, [activeThread, ownerEmail, viewerPersona.id, onUnreadChange]);
 
   const reloadMessages = useCallback(() => {
     if (!activeThread) return;
@@ -890,6 +896,11 @@ function ThreadListItem({
           <p className="text-[10px] text-emerald-600 font-semibold mt-1">{p.orderCount} đơn</p>
         )}
       </div>
+      {thread.unreadCount > 0 && (
+        <span className="shrink-0 min-w-[20px] h-5 px-1.5 flex items-center justify-center rounded-full bg-red-500 text-white text-[10px] font-bold tabular-nums">
+          {thread.unreadCount > 99 ? '99+' : thread.unreadCount}
+        </span>
+      )}
     </button>
   );
 }

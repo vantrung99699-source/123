@@ -49,9 +49,13 @@ interface MenuItem {
   divider?: boolean;
 }
 
+const SETTINGS_CHILDREN: { id: AdminView; label: string }[] = [
+  { id: 'general-settings', label: 'Giới hạn & chính sách' },
+  { id: 'notification-settings', label: 'Cài đặt thông báo' },
+];
+
 const MENU_ITEMS: MenuItem[] = [
   { id: 'statistics', icon: LayoutDashboard, label: 'Thống kê' },
-  { id: 'general-settings', icon: Settings, label: 'Cài đặt chung' },
   { id: 'users', icon: Users, label: 'Quản lý người dùng' },
   { id: 'gian-hang-approval', icon: ClipboardCheck, label: 'Quản lý gian hàng' },
   { id: 'sales', icon: ShoppingBag, label: 'Quản lý bán hàng' },
@@ -119,6 +123,84 @@ const SidebarItem = ({
     </button>
   );
 };
+
+function SettingsMenuGroup({
+  activeView,
+  onViewChange,
+  collapsed,
+}: {
+  activeView: AdminView;
+  onViewChange: (view: AdminView) => void;
+  collapsed?: boolean;
+}) {
+  const isSettingsActive = SETTINGS_CHILDREN.some(c => c.id === activeView);
+  const [open, setOpen] = useState(isSettingsActive);
+
+  useEffect(() => {
+    if (isSettingsActive) setOpen(true);
+  }, [isSettingsActive]);
+
+  if (collapsed) {
+    return (
+      <button
+        type="button"
+        title="Cài đặt chung"
+        onClick={() => onViewChange('general-settings')}
+        className={`w-full flex items-center justify-center rounded-xl text-sm font-medium transition-all px-2 py-2.5 ${
+          isSettingsActive
+            ? 'bg-blue-600 text-white shadow-lg shadow-blue-200'
+            : 'text-slate-500 hover:bg-slate-100 hover:text-slate-700'
+        }`}
+      >
+        <Settings size={18} />
+      </button>
+    );
+  }
+
+  return (
+    <div className="space-y-0.5">
+      <button
+        type="button"
+        onClick={() => setOpen(v => !v)}
+        className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${
+          isSettingsActive
+            ? 'bg-blue-600 text-white shadow-lg shadow-blue-200'
+            : 'text-slate-500 hover:bg-slate-100 hover:text-slate-700'
+        }`}
+      >
+        <Settings size={18} className="shrink-0" />
+        <span className="flex-1 text-left">Cài đặt chung</span>
+        <ChevronDown
+          size={16}
+          className={`shrink-0 transition-transform ${open ? 'rotate-180' : ''} ${
+            isSettingsActive ? 'text-white/80' : 'text-slate-400'
+          }`}
+        />
+      </button>
+      {open ? (
+        <div className="ml-3 pl-3 border-l border-slate-200 space-y-0.5">
+          {SETTINGS_CHILDREN.map(child => {
+            const childActive = activeView === child.id;
+            return (
+              <button
+                key={child.id}
+                type="button"
+                onClick={() => onViewChange(child.id)}
+                className={`w-full text-left px-3 py-2 rounded-lg text-[13px] font-semibold transition-all ${
+                  childActive
+                    ? 'bg-blue-50 text-blue-700 border border-blue-100'
+                    : 'text-slate-500 hover:bg-slate-50 hover:text-slate-700'
+                }`}
+              >
+                {child.label}
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+    </div>
+  );
+}
 
 export function AdminSidebar({
   activeView,
@@ -208,6 +290,11 @@ export function AdminSidebar({
 
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto px-3 py-2 space-y-1">
+        <SettingsMenuGroup
+          activeView={activeView}
+          onViewChange={onViewChange}
+          collapsed={isCollapsed}
+        />
         {MENU_ITEMS.map((item) => {
           if (item.divider) {
             return !isCollapsed ? (

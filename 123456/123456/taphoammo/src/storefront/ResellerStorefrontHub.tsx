@@ -59,6 +59,9 @@ export function ResellerStorefrontHub({
   const [activeTab, setActiveTab] = useState<HubTab>('stats');
   const [withdrawModalOpen, setWithdrawModalOpen] = useState(false);
   const [withdrawRevision, setWithdrawRevision] = useState(0);
+  /** Số đơn / yêu cầu đã «đọc» — badge (n) chỉ hiện phần chưa xem. */
+  const [acknowledgedOrdersCount, setAcknowledgedOrdersCount] = useState(0);
+  const [acknowledgedRequestsCount, setAcknowledgedRequestsCount] = useState(0);
 
   const referrerIdentityExtras = useMemo(() => {
     const extras: string[] = [];
@@ -130,12 +133,35 @@ export function ResellerStorefrontHub({
     [referrerEmail, withdrawRevision]
   );
 
+  const unseenOrdersCount = Math.max(0, myCompletedOrders.length - acknowledgedOrdersCount);
+  const unseenRequestsCount = Math.max(0, myRequests.length - acknowledgedRequestsCount);
+
   const tabs: { id: HubTab; label: string }[] = [
     { id: 'stats', label: 'Thống kê' },
-    { id: 'orders', label: `Đơn giới thiệu (${myCompletedOrders.length})` },
-    { id: 'requests', label: `Yêu cầu % (${myRequests.length})` },
+    {
+      id: 'orders',
+      label:
+        unseenOrdersCount > 0
+          ? `Đơn giới thiệu (${unseenOrdersCount})`
+          : 'Đơn giới thiệu',
+    },
+    {
+      id: 'requests',
+      label:
+        unseenRequestsCount > 0 ? `Yêu cầu % (${unseenRequestsCount})` : 'Yêu cầu %',
+    },
     { id: 'withdraw', label: 'Rút tiền' },
   ];
+
+  const handleTabSelect = (tabId: HubTab) => {
+    setActiveTab(tabId);
+    if (tabId === 'orders') {
+      setAcknowledgedOrdersCount(myCompletedOrders.length);
+    }
+    if (tabId === 'requests') {
+      setAcknowledgedRequestsCount(myRequests.length);
+    }
+  };
 
   const handleWithdrawSuccess = (record: ResellerWithdrawRecord) => {
     setWithdrawRevision((n) => n + 1);
@@ -184,7 +210,7 @@ export function ResellerStorefrontHub({
             <button
               key={tab.id}
               type="button"
-              onClick={() => setActiveTab(tab.id)}
+              onClick={() => handleTabSelect(tab.id)}
               className={`pb-3 text-sm font-semibold transition-all relative whitespace-nowrap ${
                 activeTab === tab.id ? 'text-violet-700' : 'text-slate-400 hover:text-slate-600'
               }`}

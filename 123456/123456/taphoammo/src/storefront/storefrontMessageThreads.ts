@@ -8,12 +8,14 @@ import {
 import { isOrderForSeller } from './sellerPaymentHistory';
 import {
   buildBuyerSellerThreadId,
+  buildResellerBuyerThreadId,
   buildThreadIdBetweenPersonas,
   getCurrentMessagingPersona,
   getDemoChatPartnersForMode,
   personaToPartnerProfile,
   resolveBuyerPersona,
 } from './storefrontMessagingPersonas';
+import { getThreadUnreadCount } from './storefrontMessagesStorage';
 import type { MessagePartnerProfile } from './storefrontMessagingPersonas';
 import {
   ensureDemoCrossModeMessages,
@@ -120,6 +122,7 @@ export function buildStorefrontMessageThreads(input: BuildMessageThreadsInput): 
   };
   ensureDemoCrossModeMessages(currentEmail, session);
 
+  const viewerPersona = getCurrentMessagingPersona(accountMode, session);
   const buyerKey = resolveBuyerPersona(session).login;
   const map = new Map<string, { partner: MessagePartnerProfile; orders: Order[] }>();
 
@@ -248,7 +251,7 @@ export function buildStorefrontMessageThreads(input: BuildMessageThreadsInput): 
           ? `Đơn ${partner.lastOrderId ?? ''} · ${partner.lastProductName}`
           : `Tin nhắn với ${partner.displayName}`),
       lastActivityMs: last?.sentAtMs ?? 0,
-      unreadCount: 0,
+      unreadCount: getThreadUnreadCount(currentEmail, id, viewerPersona.id),
     };
   });
 

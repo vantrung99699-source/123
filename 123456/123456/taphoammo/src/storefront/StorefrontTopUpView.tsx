@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  ArrowLeft,
   Building2,
   Check,
   Copy,
@@ -87,14 +86,12 @@ export interface StorefrontTopUpViewProps {
   walletBalanceVnd: number;
   transferUserCode: string;
   paymentHistoryCheckoutItems: PaymentHistoryItem[];
-  onBack: () => void;
 }
 
 export function StorefrontTopUpView({
   walletBalanceVnd,
   transferUserCode,
   paymentHistoryCheckoutItems,
-  onBack,
 }: StorefrontTopUpViewProps) {
   const [selectedBankId, setSelectedBankId] = useState(STOREFRONT_TOP_UP_BANKS[0].id);
   const [amountInput, setAmountInput] = useState('');
@@ -176,15 +173,6 @@ export function StorefrontTopUpView({
   return (
     <div className="min-h-screen bg-[#F8FAFC] font-sans text-slate-900 p-4 md:p-8">
       <div className="max-w-6xl mx-auto">
-        <button
-          type="button"
-          onClick={onBack}
-          className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors shadow-sm mb-8"
-        >
-          <ArrowLeft size={16} />
-          Về trang mua hàng
-        </button>
-
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-slate-900 tracking-tight mb-2">Nạp tiền vào ví</h1>
           <p className="text-slate-500 text-sm max-w-2xl leading-relaxed">

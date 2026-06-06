@@ -30,6 +30,7 @@ import type { AdminView, PaymentHistory } from './types';
 import type { Order } from '../ordersTypes';
 import type { GianHangTop1State } from '../gianHang/gianHangTop1Storage';
 import { GeneralSettingsView } from './GeneralSettingsView';
+import { NotificationSettingsView } from './NotificationSettingsView';
 import { readAdminNotifications } from './adminNotificationsStorage';
 
 const VIEW_COMPONENTS: Record<
@@ -45,6 +46,7 @@ const VIEW_COMPONENTS: Record<
     | 'complaint-orders'
     | 'top-stores'
     | 'general-settings'
+    | 'notification-settings'
   >,
   React.FC
 > = {
@@ -182,7 +184,8 @@ export function AdminDashboard({
     activeView === 'service-orders' ||
     activeView === 'complaint-orders' ||
     activeView === 'top-stores' ||
-    activeView === 'general-settings'
+    activeView === 'general-settings' ||
+    activeView === 'notification-settings'
       ? null
       : VIEW_COMPONENTS[activeView];
 
@@ -306,6 +309,10 @@ export function AdminDashboard({
           ) : activeView === 'general-settings' ? (
             <React.Fragment key="general-settings">
               <GeneralSettingsView categories={categories} orders={orders} />
+            </React.Fragment>
+          ) : activeView === 'notification-settings' ? (
+            <React.Fragment key="notification-settings">
+              <NotificationSettingsView />
             </React.Fragment>
           ) : activeView === 'top-stores' ? (
             <React.Fragment key="top-stores">

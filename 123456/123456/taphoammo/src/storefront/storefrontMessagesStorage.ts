@@ -32,8 +32,10 @@ export interface ViewChatMessage {
 
 const KEY = 'taphoammo_storefront_messages_v2';
 const DEMO_SEEDED_KEY = 'taphoammo_storefront_messages_demo_seeded_v1';
+const READ_KEY = 'taphoammo_storefront_messages_read_v1';
 
 type Store = Record<string, Record<string, StoredChatMessage[]>>;
+type ReadStore = Record<string, Record<string, number>>;
 
 function normOwner(email: string): string {
   return email.trim().toLowerCase() || '_anonymous';
@@ -56,6 +58,58 @@ function writeStore(store: Store): void {
   } catch {
     /* ignore */
   }
+}
+
+function readReadStore(): ReadStore {
+  try {
+    const raw = localStorage.getItem(READ_KEY);
+    if (!raw) return {};
+    const o = JSON.parse(raw) as ReadStore;
+    return typeof o === 'object' && o !== null ? o : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeReadStore(store: ReadStore): void {
+  try {
+    localStorage.setItem(READ_KEY, JSON.stringify(store));
+  } catch {
+    /* ignore */
+  }
+}
+
+export function getThreadLastReadAtMs(ownerEmail: string, threadId: string): number {
+  const store = readReadStore();
+  return store[normOwner(ownerEmail)]?.[threadId] ?? 0;
+}
+
+/** Đánh dấu đã đọc tới thời điểm tin mới nhất (hoặc `readAtMs` nếu truyền). */
+export function markThreadAsRead(
+  ownerEmail: string,
+  threadId: string,
+  readAtMs?: number
+): void {
+  const store = readReadStore();
+  const owner = normOwner(ownerEmail);
+  const row = store[owner] ?? {};
+  const messages = readRawThread(ownerEmail, threadId);
+  const latest = messages.length ? messages[messages.length - 1].sentAtMs : Date.now();
+  row[threadId] = readAtMs ?? latest;
+  store[owner] = row;
+  writeReadStore(store);
+}
+
+/** Số tin từ đối tác chưa đọc trong hội thoại. */
+export function getThreadUnreadCount(
+  ownerEmail: string,
+  threadId: string,
+  viewerPersona: MessagingPersonaId
+): number {
+  const lastRead = getThreadLastReadAtMs(ownerEmail, threadId);
+  return readRawThread(ownerEmail, threadId).filter(
+    m => m.sender !== viewerPersona && m.sentAtMs > lastRead
+  ).length;
 }
 
 function dedupeStoredMessages(list: StoredChatMessage[]): StoredChatMessage[] {
