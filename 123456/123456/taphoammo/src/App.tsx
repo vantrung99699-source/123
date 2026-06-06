@@ -19,6 +19,7 @@ import {
   setStorefrontLoggedIn,
 } from './auth/roles';
 import { clearAdminImpersonateFlag } from './auth/adminImpersonateStorefront';
+import { recordStorefrontLoginSession } from './auth/storefrontLoginSessions';
 import {
   getStorefrontWalletVndForEmail,
   setStorefrontWalletVndForEmail,
@@ -5604,6 +5605,7 @@ export default function App() {
           setStorefrontBuyerName(username);
           setStorefrontBuyerEmailState(email);
           setStorefrontWalletVnd(getStorefrontWalletVndForEmail(email));
+          recordStorefrontLoginSession(email);
         }}
         onStorefrontLogout={() => {
           clearAdminImpersonateFlag();
