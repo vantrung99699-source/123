@@ -2,7 +2,10 @@
  * Đăng ký bán hàng storefront (demo — localStorage).
  */
 import { readAdminSellerRegistrationSettings } from '../admin/adminSellerRegistrationSettings';
-import { notifySellerRegistrationApproved } from './sellerRegistrationApprovalNotify';
+import {
+  notifySellerRegistrationApproved,
+  notifySellerRegistrationRejected,
+} from './sellerRegistrationApprovalNotify';
 
 export type SellerRegistrationStatus = 'pending' | 'approved' | 'rejected';
 
@@ -99,11 +102,13 @@ export function approveSellerRegistration(id: string): SellerRegistrationRequest
 export function rejectSellerRegistration(id: string): SellerRegistrationRequest | null {
   const row = readAll().find(r => r.id === id);
   if (!row || row.status !== 'pending') return null;
-  return updateRegistration(id, {
+  const next = updateRegistration(id, {
     status: 'rejected',
     rejectedAtIso: new Date().toISOString(),
     approvedAtIso: undefined,
   });
+  if (next) notifySellerRegistrationRejected(next);
+  return next;
 }
 
 /** Hủy duyệt — đưa đơn đã duyệt về chờ duyệt. */
@@ -138,6 +143,41 @@ export function validateSellerRegistrationForm(input: {
   if (!/^0\d{9,10}$/.test(phone)) return 'Số điện thoại không hợp lệ (10–11 số, bắt đầu bằng 0).';
 
   return null;
+}
+
+/** Cập nhật đơn chờ duyệt và đưa lên đầu hàng chờ (theo thời gian gửi lại). */
+export function resubmitSellerRegistration(
+  email: string,
+  input: { fullName: string; facebookUrl: string; phone: string }
+): { ok: true; record: SellerRegistrationRequest } | { ok: false; error: string } {
+  const key = normEmail(email);
+  if (!key) return { ok: false, error: 'Vui lòng đăng nhập để đăng ký bán hàng.' };
+
+  const validation = validateSellerRegistrationForm(input);
+  if (validation) return { ok: false, error: validation };
+
+  const existing = getSellerRegistrationByEmail(key);
+  if (!existing || existing.status !== 'pending') {
+    return { ok: false, error: 'Không tìm thấy đơn đăng ký đang chờ duyệt.' };
+  }
+
+  const nowIso = new Date().toISOString();
+  const record: SellerRegistrationRequest = {
+    ...existing,
+    fullName: input.fullName.trim(),
+    facebookUrl: input.facebookUrl.trim(),
+    phone: input.phone.replace(/\s/g, ''),
+    submittedAtIso: nowIso,
+    status: 'pending',
+    approvedAtIso: undefined,
+    rejectedAtIso: undefined,
+  };
+
+  const list = readAll().filter(r => r.id !== existing.id);
+  list.unshift(record);
+  writeAll(list);
+
+  return { ok: true, record };
 }
 
 export function submitSellerRegistration(

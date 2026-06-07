@@ -1,8 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import {
   CheckCircle2,
+  Clock,
   Facebook,
+  Pencil,
   Phone,
   Store,
   User,
@@ -11,9 +13,9 @@ import {
 import { StorefrontTelegramConnectPanel } from '../components/StorefrontTelegramConnectPanel';
 import {
   getSellerRegistrationByEmail,
-  hasPendingSellerRegistration,
-  isSellerRegistrationApproved,
+  resubmitSellerRegistration,
   submitSellerRegistration,
+  type SellerRegistrationRequest,
 } from './storefrontSellerRegistration';
 
 export interface StorefrontSellerRegistrationModalProps {
@@ -26,6 +28,18 @@ export interface StorefrontSellerRegistrationModalProps {
   onMarkTelegramLinked: () => void;
   onRequireLogin?: () => void;
   onSuccess?: (autoApproved?: boolean) => void;
+}
+
+function formatSubmittedAt(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '—';
+  return d.toLocaleString('vi-VN', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 }
 
 export function StorefrontSellerRegistrationModal({
@@ -45,11 +59,18 @@ export function StorefrontSellerRegistrationModal({
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [autoApprovedSuccess, setAutoApprovedSuccess] = useState(false);
+  const [resubmittedSuccess, setResubmittedSuccess] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [telegramConnected, setTelegramConnected] = useState(telegramLinked);
 
-  const pendingRegistration = isLoggedIn && hasPendingSellerRegistration(userEmail);
-  const approvedRegistration = isLoggedIn && isSellerRegistrationApproved(userEmail);
+  const existingRegistration = useMemo((): SellerRegistrationRequest | null => {
+    if (!isLoggedIn || !userEmail.trim()) return null;
+    return getSellerRegistrationByEmail(userEmail);
+  }, [isLoggedIn, userEmail, open, success]);
+
+  const pendingRegistration = existingRegistration?.status === 'pending';
+  const approvedRegistration = existingRegistration?.status === 'approved';
+  const rejectedRegistration = existingRegistration?.status === 'rejected';
 
   useEffect(() => {
     if (!open) return;
@@ -57,17 +78,18 @@ export function StorefrontSellerRegistrationModal({
     setError(null);
     setSuccess(false);
     setAutoApprovedSuccess(false);
+    setResubmittedSuccess(false);
     setSubmitting(false);
-    setFullName(displayName.trim());
-    setFacebookUrl('');
-    setPhone('');
-    if (isLoggedIn && hasPendingSellerRegistration(userEmail)) {
-      const existing = getSellerRegistrationByEmail(userEmail);
-      if (existing) {
-        setFullName(existing.fullName);
-        setFacebookUrl(existing.facebookUrl);
-        setPhone(existing.phone);
-      }
+
+    const existing = isLoggedIn ? getSellerRegistrationByEmail(userEmail) : null;
+    if (existing && (existing.status === 'pending' || existing.status === 'rejected')) {
+      setFullName(existing.fullName);
+      setFacebookUrl(existing.facebookUrl);
+      setPhone(existing.phone);
+    } else {
+      setFullName(displayName.trim());
+      setFacebookUrl('');
+      setPhone('');
     }
   }, [open, telegramLinked, displayName, isLoggedIn, userEmail]);
 
@@ -85,7 +107,6 @@ export function StorefrontSellerRegistrationModal({
   const canSubmit =
     isLoggedIn &&
     telegramConnected &&
-    !pendingRegistration &&
     !approvedRegistration &&
     !success;
 
@@ -102,7 +123,12 @@ export function StorefrontSellerRegistrationModal({
 
     setSubmitting(true);
     setError(null);
-    const result = submitSellerRegistration(userEmail, { fullName, facebookUrl, phone });
+
+    const payload = { fullName, facebookUrl, phone };
+    const result = pendingRegistration
+      ? resubmitSellerRegistration(userEmail, payload)
+      : submitSellerRegistration(userEmail, payload);
+
     setSubmitting(false);
 
     if (!result.ok) {
@@ -110,9 +136,13 @@ export function StorefrontSellerRegistrationModal({
       return;
     }
 
-    setAutoApprovedSuccess(result.autoApproved === true);
+    if (pendingRegistration) {
+      setResubmittedSuccess(true);
+    } else {
+      setAutoApprovedSuccess('autoApproved' in result && result.autoApproved === true);
+    }
     setSuccess(true);
-    onSuccess?.(result.autoApproved === true);
+    onSuccess?.('autoApproved' in result ? result.autoApproved : undefined);
   };
 
   return (
@@ -141,8 +171,14 @@ export function StorefrontSellerRegistrationModal({
                   <Store size={18} className="text-emerald-600" />
                 </div>
                 <div>
-                  <h3 className="text-lg font-bold text-slate-900">Đăng ký bán hàng</h3>
-                  <p className="text-xs text-slate-500 mt-0.5">Mở gian hàng trên TapHoaMMO</p>
+                  <h3 className="text-lg font-bold text-slate-900">
+                    {pendingRegistration ? 'Đơn đăng ký bán hàng' : 'Đăng ký bán hàng'}
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    {pendingRegistration
+                      ? 'Xem, chỉnh sửa và gửi lại để ưu tiên duyệt'
+                      : 'Mở gian hàng trên TapHoaMMO'}
+                  </p>
                 </div>
               </div>
               <button
@@ -189,12 +225,18 @@ export function StorefrontSellerRegistrationModal({
                 <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-5 text-center">
                   <CheckCircle2 size={40} className="mx-auto text-emerald-500 mb-3" />
                   <p className="text-base font-bold text-emerald-900">
-                    {autoApprovedSuccess ? 'Đăng ký bán hàng đã được duyệt' : 'Đã gửi đăng ký bán hàng'}
+                    {resubmittedSuccess
+                      ? 'Đã gửi lại đơn đăng ký'
+                      : autoApprovedSuccess
+                        ? 'Đăng ký bán hàng đã được duyệt'
+                        : 'Đã gửi đăng ký bán hàng'}
                   </p>
                   <p className="text-sm text-emerald-800/90 mt-2 leading-relaxed">
-                    {autoApprovedSuccess
-                      ? 'Chúc mừng! Bạn đã nhận thông báo và tin nhắn từ TapHoaMMO Hỗ trợ. Mở mục Nhắn tin để xem hướng dẫn tiếp theo.'
-                      : 'Đội ngũ TapHoaMMO sẽ liên hệ qua Telegram hoặc số điện thoại bạn cung cấp trong thời gian sớm nhất.'}
+                    {resubmittedSuccess
+                      ? 'Đơn của bạn đã được cập nhật và đưa lên đầu hàng chờ duyệt. Đội ngũ TapHoaMMO sẽ liên hệ sớm nhất.'
+                      : autoApprovedSuccess
+                        ? 'Chúc mừng! Mở Nhắn tin → TapHoaMMO Hỗ trợ để xem hướng dẫn vào «Quản lý cửa hàng» tạo gian hàng mới.'
+                        : 'Đội ngũ TapHoaMMO sẽ liên hệ qua Telegram hoặc số điện thoại bạn cung cấp trong thời gian sớm nhất.'}
                   </p>
                   <button
                     type="button"
@@ -212,9 +254,26 @@ export function StorefrontSellerRegistrationModal({
                     </div>
                   )}
 
-                  {pendingRegistration && (
+                  {pendingRegistration && existingRegistration && (
                     <div className="rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
-                      Bạn đã gửi đăng ký và đang chờ duyệt. Vui lòng chờ đội ngũ liên hệ.
+                      <p className="font-semibold flex items-center gap-2">
+                        <Clock size={15} className="shrink-0" />
+                        Đơn đang chờ duyệt
+                      </p>
+                      <p className="mt-1.5 text-sky-800/90 leading-relaxed">
+                        Gửi lúc{' '}
+                        <span className="font-bold tabular-nums">
+                          {formatSubmittedAt(existingRegistration.submittedAtIso)}
+                        </span>
+                        . Bạn có thể sửa thông tin bên dưới và{' '}
+                        <span className="font-bold">gửi lại</span> để đưa đơn lên đầu hàng chờ.
+                      </p>
+                    </div>
+                  )}
+
+                  {rejectedRegistration && (
+                    <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                      Đơn trước đó đã bị từ chối. Chỉnh sửa thông tin và gửi đăng ký mới bên dưới.
                     </div>
                   )}
 
@@ -231,7 +290,7 @@ export function StorefrontSellerRegistrationModal({
                           setFullName(e.target.value);
                           if (error) setError(null);
                         }}
-                        disabled={!isLoggedIn || pendingRegistration || approvedRegistration}
+                        disabled={!isLoggedIn || approvedRegistration}
                         placeholder="Nguyễn Văn A"
                         className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:border-emerald-500 outline-none disabled:bg-slate-50 disabled:text-slate-500"
                       />
@@ -249,7 +308,7 @@ export function StorefrontSellerRegistrationModal({
                           setFacebookUrl(e.target.value);
                           if (error) setError(null);
                         }}
-                        disabled={!isLoggedIn || pendingRegistration || approvedRegistration}
+                        disabled={!isLoggedIn || approvedRegistration}
                         placeholder="https://facebook.com/ten-ban"
                         className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:border-emerald-500 outline-none disabled:bg-slate-50 disabled:text-slate-500"
                       />
@@ -268,7 +327,7 @@ export function StorefrontSellerRegistrationModal({
                           setPhone(e.target.value);
                           if (error) setError(null);
                         }}
-                        disabled={!isLoggedIn || pendingRegistration || approvedRegistration}
+                        disabled={!isLoggedIn || approvedRegistration}
                         placeholder="0912345678"
                         className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:border-emerald-500 outline-none disabled:bg-slate-50 disabled:text-slate-500"
                       />
@@ -293,9 +352,18 @@ export function StorefrontSellerRegistrationModal({
                       type="button"
                       onClick={handleSubmit}
                       disabled={!canSubmit || submitting}
-                      className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 text-sm font-bold text-white shadow-md shadow-emerald-500/20 hover:brightness-[1.03] transition disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 text-sm font-bold text-white shadow-md shadow-emerald-500/20 hover:brightness-[1.03] transition disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2"
                     >
-                      {submitting ? 'Đang gửi...' : 'Gửi đăng ký'}
+                      {submitting ? (
+                        'Đang gửi...'
+                      ) : pendingRegistration ? (
+                        <>
+                          <Pencil size={15} />
+                          Gửi lại đăng ký
+                        </>
+                      ) : (
+                        'Gửi đăng ký'
+                      )}
                     </button>
                   </div>
                 </>

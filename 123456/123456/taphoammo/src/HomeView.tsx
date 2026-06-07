@@ -65,7 +65,10 @@ import {
   setStorefrontTelegramLinked,
 } from './storefront/storefrontBasicProfile';
 import { StorefrontSellerRegistrationModal } from './storefront/StorefrontSellerRegistrationModal';
-import { isSellerRegistrationApproved } from './storefront/storefrontSellerRegistration';
+import {
+  hasPendingSellerRegistration,
+  isSellerRegistrationApproved,
+} from './storefront/storefrontSellerRegistration';
 import {
   isStorefrontTelegramOrderNotifEnabled,
   setStorefrontTelegramOrderNotifEnabled,
@@ -108,6 +111,7 @@ import {
   adminProductToSponsoredHubItem,
   applyTop1FlagsToStorefrontProduct,
   resolveStorefrontTop1Context,
+  sortSponsoredProductsByCategorySelection,
   sortStorefrontProductsWithTop1First,
 } from './gianHang/gianHangTop1Storefront';
 import { ProductReviewsContent } from './components/ProductReviewsContent';
@@ -2176,10 +2180,10 @@ const ProductDetailView = ({
               <p className="text-[12px] font-semibold text-gray-700 mb-2">Mã giảm giá</p>
               <div className="flex flex-wrap items-start gap-2 max-w-[420px]">
                 <div className="relative flex-1 min-w-[200px]">
-                  <input
-                    type="text"
-                    placeholder="Nhập mã giảm giá"
-                    value={discountCode}
+                <input
+                  type="text"
+                  placeholder="Nhập mã giảm giá"
+                  value={discountCode}
                     onChange={(e) => {
                       setDiscountCode(e.target.value.toUpperCase());
                       if (appliedDiscount) {
@@ -2194,9 +2198,9 @@ const ProductDetailView = ({
                       }
                     }}
                     className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-lg text-[13px] outline-none focus:border-[#22c55e] focus:ring-1 focus:ring-[#22c55e]/30 transition-all pr-10 font-mono tracking-wide"
-                  />
-                  <Search size={16} className="absolute right-3 top-3 text-gray-400" />
-                </div>
+                />
+                <Search size={16} className="absolute right-3 top-3 text-gray-400" />
+              </div>
                 <button
                   type="button"
                   onClick={applyDiscountCode}
@@ -2259,8 +2263,8 @@ const ProductDetailView = ({
                     }
                   }
                   if (!ensureDiscountBeforeCheckout()) return;
-                  setCheckoutError(null);
-                  setIsCheckoutOpen(true);
+                    setCheckoutError(null);
+                    setIsCheckoutOpen(true);
                 }}
                 className={`px-8 py-3 rounded-lg text-[14px] font-bold transition-all shadow-md inline-flex items-center gap-2 ${
                   !storefrontLoggedIn
@@ -2269,8 +2273,8 @@ const ProductDetailView = ({
                         storefrontNoMatHang ||
                         (!isServiceProduct &&
                           (product.isOutOfStock || maxPurchasableStock <= 0))
-                      ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                      : 'bg-gradient-to-r from-green-500 to-emerald-600 text-white hover:shadow-lg hover:shadow-green-500/30 hover:scale-[1.02]'
+                    ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                    : 'bg-gradient-to-r from-green-500 to-emerald-600 text-white hover:shadow-lg hover:shadow-green-500/30 hover:scale-[1.02]'
                 }`}
               >
                 {isPurchaseBusy ? (
@@ -2287,8 +2291,8 @@ const ProductDetailView = ({
                 )}
               </button>
               {product.allowPreOrder && !isServiceProduct && (
-                <button
-                  type="button"
+              <button
+                type="button"
                   disabled={storefrontLoggedIn ? storefrontNoMatHang || isPurchaseBusy : false}
                   onClick={() => {
                     if (requireLoginForPurchase()) return;
@@ -2302,14 +2306,14 @@ const ProductDetailView = ({
                     setPreOrderError(null);
                     setIsPreOrderOpen(true);
                   }}
-                  className={`px-6 py-3 rounded-lg text-[14px] font-bold border-2 transition-all shadow-sm ${
+                className={`px-6 py-3 rounded-lg text-[14px] font-bold border-2 transition-all shadow-sm ${
                     storefrontNoMatHang || isPurchaseBusy
-                      ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
-                      : 'bg-white text-emerald-800 border-emerald-500 hover:bg-emerald-50 shadow-emerald-500/10'
-                  }`}
-                >
-                  Đặt trước
-                </button>
+                    ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
+                    : 'bg-white text-emerald-800 border-emerald-500 hover:bg-emerald-50 shadow-emerald-500/10'
+                }`}
+              >
+                Đặt trước
+              </button>
               )}
               <button
                 type="button"
@@ -2328,8 +2332,8 @@ const ProductDetailView = ({
                   className="w-11 h-11 rounded-lg bg-green-50 border-2 border-green-200 flex items-center justify-center hover:bg-green-100 transition-colors"
                   title={`Reseller — chiết khấu ${effectiveResellerPercent ?? resellerPercent}%`}
                 >
-                  <span className="text-lg">🤝</span>
-                </button>
+                <span className="text-lg">🤝</span>
+              </button>
               )}
             </div>
           </div>
@@ -3107,8 +3111,8 @@ const ProductDetailView = ({
                 <ul className="text-[11.5px] text-amber-950/90 leading-relaxed space-y-1.5 pl-0 list-none">
                   {paymentSuccessOrder.order_type === 'service' ? (
                     <>
-                      <li className="flex gap-2">
-                        <span className="text-amber-600 font-bold flex-shrink-0">•</span>
+                  <li className="flex gap-2">
+                    <span className="text-amber-600 font-bold flex-shrink-0">•</span>
                         <span>
                           Đơn dịch vụ <b>Chờ xác nhận</b> — shop phải xác nhận và hoàn thành trong{' '}
                           <b>
@@ -3116,21 +3120,21 @@ const ProductDetailView = ({
                           </b>
                           ; quá hạn → Thất bại và hoàn tiền.
                         </span>
-                      </li>
-                      <li className="flex gap-2">
-                        <span className="text-amber-600 font-bold flex-shrink-0">•</span>
+                  </li>
+                  <li className="flex gap-2">
+                    <span className="text-amber-600 font-bold flex-shrink-0">•</span>
                         <span>Theo dõi tiến độ tại mục Đơn hàng đã mua → mã đơn của bạn.</span>
-                      </li>
+                  </li>
                     </>
                   ) : (
                     <>
-                      <li className="flex gap-2">
-                        <span className="text-amber-600 font-bold flex-shrink-0">•</span>
+                  <li className="flex gap-2">
+                    <span className="text-amber-600 font-bold flex-shrink-0">•</span>
                         <span>
                           Tiền đang <b>tạm giữ</b> trên sàn cho đến khi đơn được xử lý / giao đúng theo chính sách;
                           vui lòng theo dõi trạng thái tại mục Đơn hàng đã mua.
                         </span>
-                      </li>
+                  </li>
                       <li className="flex gap-2">
                         <span className="text-amber-600 font-bold flex-shrink-0">•</span>
                         <span>
@@ -3810,6 +3814,7 @@ export const HomeView = ({
   const [showTelegramDisconnectConfirm, setShowTelegramDisconnectConfirm] = useState(false);
   const [telegramNotifPrefsTick, setTelegramNotifPrefsTick] = useState(0);
   const [showSellerRegistrationModal, setShowSellerRegistrationModal] = useState(false);
+  const [sellerRegRevision, setSellerRegRevision] = useState(0);
   const [registerPanelSignal, setRegisterPanelSignal] = useState(0);
   const [telegramLinkTick, setTelegramLinkTick] = useState(0);
   // Edit profile form state
@@ -4338,6 +4343,12 @@ export const HomeView = ({
     basicProfile.gianHangCount > 0 ||
     isSellerRegistrationApproved(storefrontBuyerEmail);
 
+  const sellerRegHubButtonLabel = useMemo(() => {
+    if (!storefrontLoggedIn) return 'Đăng ký bán hàng';
+    if (hasPendingSellerRegistration(storefrontBuyerEmail)) return 'Xem đơn đăng ký';
+    return 'Đăng ký bán hàng';
+  }, [storefrontLoggedIn, storefrontBuyerEmail, sellerRegRevision]);
+
   const telegramOrderNotifEnabled = useMemo(
     () => isStorefrontTelegramOrderNotifEnabled(storefrontBuyerEmail),
     [storefrontBuyerEmail, telegramNotifPrefsTick]
@@ -4691,12 +4702,15 @@ export const HomeView = ({
   }, [storefrontAdminGianHangCategories, storefrontTop1Context]);
 
   const storefrontSponsoredHubItems = useMemo((): ShopHubSponsoredItem[] => {
-    const fromAdmin = storefrontAdminCatalogProducts
-      .filter(
+    const fromAdmin = sortSponsoredProductsByCategorySelection(
+      storefrontAdminCatalogProducts.filter(
         (p) =>
           p.adminGianHangId &&
           storefrontTop1Context.sponsoredIds.has(p.adminGianHangId)
-      )
+      ),
+      selectedCategories,
+      storefrontTop1Context
+    )
       .slice(0, SPONSORED_ADS_DISPLAY_MAX)
       .map(adminProductToSponsoredHubItem);
     if (fromAdmin.length > 0) return fromAdmin;
@@ -4715,7 +4729,11 @@ export const HomeView = ({
       image: ad.image,
       promoBadges: ad.promoBadges,
     }));
-  }, [storefrontAdminCatalogProducts, storefrontTop1Context.sponsoredIds]);
+  }, [
+    storefrontAdminCatalogProducts,
+    storefrontTop1Context,
+    selectedCategories,
+  ]);
 
   const storefrontFullCatalogMerged = useMemo(
     () => [...storefrontAdminCatalogProducts, ...STOREFRONT_FULL_CATALOG],
@@ -5255,9 +5273,9 @@ export const HomeView = ({
                     emptyLabel={headerT.noCategories}
                     onSelectCategory={(name) => {
                       setSelectedCategories([name]);
-                      setHeaderDropdown(null);
-                      openCatalogPage();
-                    }}
+                            setHeaderDropdown(null);
+                            openCatalogPage();
+                          }}
                   />
                 )}
               </div>
@@ -5300,7 +5318,7 @@ export const HomeView = ({
                   />
                 )}
               </div>
-              <button
+                        <button
                 type="button"
                 onClick={openStorefrontSupportPage}
                 className={`px-3.5 py-2 rounded-lg transition-colors ${
@@ -5315,8 +5333,8 @@ export const HomeView = ({
               <a href="#" className="px-3.5 py-2 rounded-lg hover:bg-white/15 hover:text-emerald-100 transition-colors flex items-center gap-1">{headerT.tools} <ChevronDown size={14} className="opacity-90" /></a>
               <a href="#" className="px-3.5 py-2 rounded-lg hover:bg-white/15 hover:text-emerald-100 transition-colors">{headerT.faqs}</a>
               <button
-                type="button"
-                onClick={() => {
+                          type="button"
+                          onClick={() => {
                   setSelectedProduct(null);
                   setStorefrontOrderDetailId(null);
                   setStorefrontPage('top-up');
@@ -5329,7 +5347,7 @@ export const HomeView = ({
                 }`}
               >
                 {headerT.topUp}
-              </button>
+                        </button>
             </nav>
           </div>
 
@@ -5368,13 +5386,13 @@ export const HomeView = ({
                 }`}
                 aria-label="Thông báo"
               >
-                <Bell size={19} />
+              <Bell size={19} />
                 {unreadUserNotifCount > 0 && (
                   <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 bg-red-500 rounded-full text-[9px] text-white flex items-center justify-center font-bold border-2 border-white/30 tabular-nums">
                     {unreadUserNotifCount > 9 ? '9+' : unreadUserNotifCount}
                   </span>
                 )}
-              </button>
+            </button>
               {userNotifPanelOpen && (
                 <div className="absolute right-0 top-full mt-2 w-[min(22rem,calc(100vw-1.5rem))] rounded-2xl border border-slate-200 bg-white shadow-2xl z-[120] overflow-hidden">
                   <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 bg-slate-50">
@@ -5405,12 +5423,28 @@ export const HomeView = ({
                               markStorefrontUserNotificationRead(storefrontBuyerEmail, item.id);
                               bumpUserNotifRevision();
                             }
+                            if (
+                              item.kind === 'seller_registration_approved' ||
+                              item.kind === 'seller_registration_rejected'
+                            ) {
+                              setUserNotifPanelOpen(false);
+                              openStorefrontSupportChat();
+                            }
                           }}
                           className={`w-full text-left px-4 py-3 hover:bg-slate-50 transition-colors ${
                             item.read ? 'opacity-75' : 'bg-emerald-50/40'
                           }`}
                         >
                           <p className="text-sm font-bold text-slate-800">{item.title}</p>
+                          <p className="text-[10px] text-slate-400 mt-1 tabular-nums">
+                            {new Date(item.createdAtIso).toLocaleString('vi-VN', {
+                              day: '2-digit',
+                              month: '2-digit',
+                              year: 'numeric',
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            })}
+                          </p>
                           <p className="text-xs text-slate-600 mt-1 leading-relaxed">{item.content}</p>
                         </button>
                       ))
@@ -5466,7 +5500,7 @@ export const HomeView = ({
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2 min-w-0">
-                        <p className="text-[13px] font-bold text-gray-900 truncate">{storefrontBuyerName}</p>
+                      <p className="text-[13px] font-bold text-gray-900 truncate">{storefrontBuyerName}</p>
                         <span
                           className={`shrink-0 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wide ${
                             isStorefrontResellerMode
@@ -5579,15 +5613,15 @@ export const HomeView = ({
                           : []),
                         ...(isStorefrontBuyerMode
                           ? ([
-                              {
-                                label: 'Đơn hàng đã mua',
-                                onSelect: () => {
-                                  setSelectedProduct(null);
-                                  setStorefrontOrderDetailId(null);
-                                  setStorefrontPage('my-orders');
-                                  window.scrollTo({ top: 0, behavior: 'smooth' });
-                                },
-                              },
+                        {
+                          label: 'Đơn hàng đã mua',
+                          onSelect: () => {
+                            setSelectedProduct(null);
+                            setStorefrontOrderDetailId(null);
+                            setStorefrontPage('my-orders');
+                            window.scrollTo({ top: 0, behavior: 'smooth' });
+                          },
+                        },
                             ] as const)
                           : []),
                         { label: 'Gian hàng yêu thích' },
@@ -5616,8 +5650,8 @@ export const HomeView = ({
                         },
                         ...(!isStorefrontCustomerMode
                           ? ([
-                              { label: 'Reseller' },
-                              { label: 'Quản lý nội dung' },
+                        { label: 'Reseller' },
+                        { label: 'Quản lý nội dung' },
                             ] as const)
                           : []),
                         { label: 'Đổi mật khẩu' },
@@ -5640,19 +5674,19 @@ export const HomeView = ({
 
                   {!isStorefrontCustomerMode && (
                     <>
-                      <div className="h-px bg-gray-100" />
+                  <div className="h-px bg-gray-100" />
 
-                      <div className="py-1">
-                        <button
-                          type="button"
-                          role="menuitem"
-                          onClick={() => {
-                            setUserMenuOpen(false);
-                            onNavigateToAdmin();
-                          }}
-                          className="w-full flex items-center justify-between gap-3 px-4 py-2.5 text-left text-[13px] text-gray-800 hover:bg-gray-100 transition-colors"
-                        >
-                          <span>Quản lý cửa hàng</span>
+                  <div className="py-1">
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        setUserMenuOpen(false);
+                        onNavigateToAdmin();
+                      }}
+                      className="w-full flex items-center justify-between gap-3 px-4 py-2.5 text-left text-[13px] text-gray-800 hover:bg-gray-100 transition-colors"
+                    >
+                      <span>Quản lý cửa hàng</span>
                           <span className="text-gray-500 tabular-nums">
                             (
                             {sellerPendingPreOrderCount > 0
@@ -5660,8 +5694,8 @@ export const HomeView = ({
                               : USER_MENU_STORE_COUNT_FALLBACK}
                             )
                           </span>
-                        </button>
-                      </div>
+                    </button>
+                  </div>
                     </>
                   )}
 
@@ -5712,20 +5746,20 @@ export const HomeView = ({
       {storefrontLoggedIn && notificationSettings.marqueeEnabled && notificationSettings.marqueeText.trim() ? (
         <div
           className="overflow-hidden py-1.5 bg-slate-50/95 border-b border-red-100/60"
-          role="status"
-          aria-label="Thông báo chạy"
-        >
-          <div className="storefront-marquee-track">
-            {[0, 1].map(i => (
-              <span
-                key={i}
-                className="inline-flex shrink-0 items-center px-12 text-[13px] font-medium text-red-600"
-              >
+        role="status"
+        aria-label="Thông báo chạy"
+      >
+        <div className="storefront-marquee-track">
+          {[0, 1].map(i => (
+            <span
+              key={i}
+              className="inline-flex shrink-0 items-center px-12 text-[13px] font-medium text-red-600"
+            >
                 {notificationSettings.marqueeText}
-              </span>
-            ))}
-          </div>
+            </span>
+          ))}
         </div>
+      </div>
       ) : null}
 
       {storefrontLoggedIn &&
@@ -5769,17 +5803,17 @@ export const HomeView = ({
             sellerName,
           }) => {
             if (isStorefrontBuyerMode) {
-              setPaymentHistoryCheckoutItems((prev) => [
-                {
-                  id: `chk-${orderId}`,
-                  date: purchaseDate,
-                  type: 'Buying',
-                  amount: -amountVnd,
-                  reason: `Thanh toán cho đơn hàng ${orderId}`,
-                  transactionCode: orderId,
-                },
-                ...prev,
-              ]);
+            setPaymentHistoryCheckoutItems((prev) => [
+              {
+                id: `chk-${orderId}`,
+                date: purchaseDate,
+                type: 'Buying',
+                amount: -amountVnd,
+                reason: `Thanh toán cho đơn hàng ${orderId}`,
+                transactionCode: orderId,
+              },
+              ...prev,
+            ]);
             }
             onSyncAdminPaymentHistory?.(
               buildAdminPaymentHistoryFromCheckout({
@@ -5937,25 +5971,25 @@ export const HomeView = ({
             />
           )
         ) : (
-          <div className="max-w-[2000px] mx-auto px-6 py-6 pb-16">
-            <div className="flex flex-wrap items-center gap-3 mb-6">
-              <button
-                type="button"
-                onClick={() => {
-                  setStorefrontOrderDetailId(null);
-                  setStorefrontPage('shop');
-                  window.scrollTo({ top: 0, behavior: 'smooth' });
-                }}
-                className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-medium text-slate-600 bg-white border border-slate-200 shadow-sm hover:bg-slate-50 hover:text-slate-900 transition-all"
-              >
-                <ChevronLeft size={18} /> Về trang mua hàng
-              </button>
-              <h1 className="text-[20px] font-bold text-gray-900">Đơn hàng đã mua</h1>
-              <p className="text-[13px] text-gray-500 w-full sm:w-auto basis-full sm:basis-auto"></p>
-            </div>
-            <PurchasedOrdersView
-              orders={myPurchasedOrders}
-              setOrders={setMyPurchasedOrders}
+        <div className="max-w-[2000px] mx-auto px-6 py-6 pb-16">
+          <div className="flex flex-wrap items-center gap-3 mb-6">
+            <button
+              type="button"
+              onClick={() => {
+                setStorefrontOrderDetailId(null);
+                setStorefrontPage('shop');
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }}
+              className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-medium text-slate-600 bg-white border border-slate-200 shadow-sm hover:bg-slate-50 hover:text-slate-900 transition-all"
+            >
+              <ChevronLeft size={18} /> Về trang mua hàng
+            </button>
+            <h1 className="text-[20px] font-bold text-gray-900">Đơn hàng đã mua</h1>
+            <p className="text-[13px] text-gray-500 w-full sm:w-auto basis-full sm:basis-auto"></p>
+          </div>
+          <PurchasedOrdersView
+            orders={myPurchasedOrders}
+            setOrders={setMyPurchasedOrders}
               buyerDisplayName={storefrontBuyerName}
               policyCategories={storefrontAdminGianHangCategories as import('./gianHang/types').Category[]}
               policyAllOrders={allOrders}
@@ -6207,8 +6241,8 @@ export const HomeView = ({
                   <div className="flex items-center justify-between px-4 py-3 bg-slate-50 hover:bg-slate-100/80 transition-colors">
                     <div className="flex items-center gap-3 min-w-0">
                       <div className="w-9 h-9 rounded-xl bg-emerald-50 border border-emerald-100 flex items-center justify-center shrink-0">
-                        <Shield size={16} className="text-emerald-600" />
-                      </div>
+                      <Shield size={16} className="text-emerald-600" />
+                    </div>
                       <div className="min-w-0">
                         <p className="text-[13px] font-semibold text-slate-800">Bảo mật 2 lớp (2FA)</p>
                         <p className="text-[11px] text-slate-500">
@@ -6216,9 +6250,9 @@ export const HomeView = ({
                             ? 'Đã bật — mỗi lần đăng nhập cần mã 6 số từ app xác thực'
                             : 'Tắt — chỉ cần mật khẩu khi đăng nhập'}
                         </p>
-                      </div>
                     </div>
-                    <button
+                  </div>
+                  <button
                       type="button"
                       role="switch"
                       aria-checked={is2FAEnabled}
@@ -6235,7 +6269,7 @@ export const HomeView = ({
                           is2FAEnabled ? 'translate-x-5' : 'translate-x-0'
                         }`}
                       />
-                    </button>
+                  </button>
                   </div>
                   {is2FAEnabled && (
                     <div className="px-4 py-3 bg-emerald-50/60 border-t border-emerald-100/80">
@@ -6257,7 +6291,7 @@ export const HomeView = ({
                     onClick={() => setShowTelegramModal(true)}
                     className="w-full flex items-center justify-between px-4 py-3 hover:bg-[#229ED9]/10 transition-colors group"
                   >
-                    <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-3">
                       <div
                         className={`w-9 h-9 rounded-xl flex items-center justify-center border ${
                           basicProfile.telegramLinked
@@ -6268,18 +6302,18 @@ export const HomeView = ({
                         {basicProfile.telegramLinked ? (
                           <CheckCircle2 size={16} className="text-emerald-600" />
                         ) : (
-                          <ExternalLink size={16} className="text-[#229ED9]" />
+                      <ExternalLink size={16} className="text-[#229ED9]" />
                         )}
-                      </div>
-                      <div className="text-left">
-                        <p className="text-[13px] font-semibold text-slate-800">Kết nối Telegram</p>
+                    </div>
+                    <div className="text-left">
+                      <p className="text-[13px] font-semibold text-slate-800">Kết nối Telegram</p>
                         <p className="text-[11px] text-slate-400">
                           {basicProfile.telegramLinked
                             ? 'Đã liên kết @TaphoaMMO_bot'
                             : 'Nhận thông báo qua Telegram'}
                         </p>
-                      </div>
                     </div>
+                  </div>
                     <span
                       className={`text-[11px] font-bold px-2.5 py-1 rounded-full ${
                         basicProfile.telegramLinked
@@ -6289,7 +6323,7 @@ export const HomeView = ({
                     >
                       {basicProfile.telegramLinked ? 'Đã kết nối' : 'Kết nối'}
                     </span>
-                  </button>
+                </button>
                   {basicProfile.telegramLinked && (
                     <div className="border-t border-slate-200/80">
                       <div className="px-4 py-3 bg-sky-50/50">
@@ -6379,12 +6413,12 @@ export const HomeView = ({
                   <div>
                     <span className="text-[13px] font-bold text-slate-800 block">Thiết bị đã đăng nhập</span>
                     <span className="text-[11px] text-slate-500">Kiểm tra trình duyệt từng truy cập tài khoản</span>
-                  </div>
                 </div>
+              </div>
                 <span className="text-[11px] font-semibold text-violet-700 bg-violet-50 border border-violet-100 px-2.5 py-1 rounded-full">
                   {loginSessions.length} phiên
-                </span>
-              </div>
+                        </span>
+                      </div>
               <div className="p-5 space-y-2.5">
                 {loginSessions.map((session: StorefrontLoginSession) => {
                   const isCurrent = session.id === currentLoginSessionId;
@@ -6412,7 +6446,7 @@ export const HomeView = ({
                           }`}
                         >
                           <DeviceIcon size={18} />
-                        </div>
+                    </div>
                         <div className="min-w-0">
                           <div className="flex flex-wrap items-center gap-2">
                             <p className="text-[13px] font-bold text-slate-800">
@@ -6425,7 +6459,7 @@ export const HomeView = ({
                                 Phiên hiện tại
                               </span>
                             ) : null}
-                          </div>
+                      </div>
                           <p className="text-[11px] text-slate-500 mt-0.5">
                             IP {session.ip} · {session.location}
                           </p>
@@ -6434,7 +6468,7 @@ export const HomeView = ({
                             <span className="mx-1.5 text-slate-300">|</span>
                             Đăng nhập: {formatStorefrontSessionTime(session.loginAt)}
                           </p>
-                        </div>
+                      </div>
                       </div>
                       <div className="relative self-start sm:self-center shrink-0">
                         <button
@@ -6475,16 +6509,16 @@ export const HomeView = ({
                               >
                                 <LogOut size={14} className="shrink-0" aria-hidden />
                                 Đăng xuất phiên
-                              </button>
-                            </div>
+                      </button>
+                    </div>
                           </>
                         )}
-                      </div>
-                    </div>
+                  </div>
+              </div>
                   );
                 })}
-              </div>
             </div>
+          </div>
 
           </div>
 
@@ -6558,32 +6592,32 @@ export const HomeView = ({
 
             {/* Navigation Tabs — người mua chỉ có giao dịch, ẩn thanh tab */}
             {paymentHistoryTabs.length > 1 && (
-              <div className="flex gap-8 border-b border-slate-200 mb-8 overflow-x-auto">
+            <div className="flex gap-8 border-b border-slate-200 mb-8 overflow-x-auto">
                 {paymentHistoryTabs.map((tab) => (
-                  <button
-                    key={tab.id}
+                <button
+                  key={tab.id}
                     type="button"
-                    onClick={() => {
-                      setPaymentHistoryActiveTab(tab.id);
-                      setPaymentHistoryCurrentPage(1);
+                  onClick={() => {
+                    setPaymentHistoryActiveTab(tab.id);
+                    setPaymentHistoryCurrentPage(1);
                       setPaymentHistorySelectedFilter('Tất cả');
-                    }}
-                    className={`pb-4 text-sm font-semibold transition-all relative whitespace-nowrap ${
-                      paymentHistoryActiveTab === tab.id ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'
-                    }`}
-                  >
-                    {tab.label}
-                    {paymentHistoryActiveTab === tab.id && (
-                      <div className="absolute bottom-0 left-0 w-full h-0.5 bg-blue-600 rounded-full" />
-                    )}
-                  </button>
-                ))}
-              </div>
+                  }}
+                  className={`pb-4 text-sm font-semibold transition-all relative whitespace-nowrap ${
+                    paymentHistoryActiveTab === tab.id ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'
+                  }`}
+                >
+                  {tab.label}
+                  {paymentHistoryActiveTab === tab.id && (
+                    <div className="absolute bottom-0 left-0 w-full h-0.5 bg-blue-600 rounded-full" />
+                  )}
+                </button>
+              ))}
+            </div>
             )}
 
             {/* Summary Cards — ẩn ở chế độ Reseller (không dùng tạm giữ / hoàn thành shop) */}
             {!isStorefrontResellerMode && (
-              <div className="flex flex-wrap gap-4 mb-8">
+            <div className="flex flex-wrap gap-4 mb-8">
                 {isStorefrontSellerMode && (
                   <>
                     <PaymentHistorySummaryCard
@@ -6592,35 +6626,35 @@ export const HomeView = ({
                       icon={Wallet}
                       colorClass="bg-emerald-50 text-emerald-600"
                     />
-                    <PaymentHistorySummaryCard
-                      label="ĐÃ RÚT"
+              <PaymentHistorySummaryCard
+                label="ĐÃ RÚT"
                       amount={sellerWithdrawnTotalVnd.toLocaleString('vi-VN')}
-                      icon={TrendingUp}
-                      colorClass="bg-orange-50 text-orange-500"
-                    />
+                icon={TrendingUp}
+                colorClass="bg-orange-50 text-orange-500"
+              />
                   </>
                 )}
-                <PaymentHistorySummaryCard
-                  label="TỔNG TIỀN TẠM GIỮ"
+              <PaymentHistorySummaryCard
+                label="TỔNG TIỀN TẠM GIỮ"
                   amount={
                     isStorefrontBuyerMode
                       ? '1,500,000'
                       : sumSellerPayoutByStatus(sellerPayoutRows, 'holding').toLocaleString('vi-VN')
                   }
-                  icon={Clock}
-                  colorClass="bg-blue-50 text-blue-500"
-                />
-                <PaymentHistorySummaryCard
-                  label="ĐÃ HOÀN THÀNH"
+                icon={Clock}
+                colorClass="bg-blue-50 text-blue-500"
+              />
+              <PaymentHistorySummaryCard
+                label="ĐÃ HOÀN THÀNH"
                   amount={
                     isStorefrontBuyerMode
                       ? '34,250,000'
                       : sumSellerPayoutByStatus(sellerPayoutRows, 'completed').toLocaleString('vi-VN')
                   }
-                  icon={CheckCircle2}
-                  colorClass="bg-emerald-50 text-emerald-500"
-                />
-              </div>
+                icon={CheckCircle2}
+                colorClass="bg-emerald-50 text-emerald-500"
+              />
+            </div>
             )}
 
             {/* Table Section */}
@@ -6733,7 +6767,7 @@ export const HomeView = ({
                               (paymentHistoryCurrentPage - 1) * 10,
                               paymentHistoryCurrentPage * 10
                             ).map(tx => (
-                              <tr key={tx.id} className="hover:bg-slate-50/50 transition-colors group">
+                          <tr key={tx.id} className="hover:bg-slate-50/50 transition-colors group">
                                 <td className="px-5 py-5 text-sm text-slate-600 font-medium whitespace-nowrap">{tx.date}</td>
                                 <td className="px-5 py-5 text-sm font-semibold text-blue-600 font-mono whitespace-nowrap">{tx.orderCode}</td>
                                 <td className="px-5 py-5 text-sm font-bold text-emerald-700 tabular-nums whitespace-nowrap">
@@ -6741,7 +6775,7 @@ export const HomeView = ({
                                 </td>
                                 <td className="px-5 py-5 text-sm text-slate-700">{tx.reason}</td>
                                 <td className="px-5 py-5 text-center whitespace-nowrap">
-                                  <PaymentHistoryStatusBadge status={tx.status} />
+                              <PaymentHistoryStatusBadge status={tx.status} />
                                 </td>
                               </tr>
                             ))
@@ -6768,9 +6802,9 @@ export const HomeView = ({
                                   <td className="px-5 py-5 text-sm text-slate-600 leading-snug max-w-md">{row.reason}</td>
                                   <td className="px-5 py-5 text-center whitespace-nowrap">
                                     <SellerPayoutEscrowBadge status={row.escrowStatus} />
-                                  </td>
-                                </tr>
-                              ))}
+                            </td>
+                          </tr>
+                        ))}
                         {!isStorefrontCustomerMode && filteredSellerPayoutRows.length === 0 && (
                           <tr>
                             <td colSpan={6} className="px-6 py-12 text-center text-sm text-slate-500">
@@ -6898,11 +6932,11 @@ export const HomeView = ({
           {isStorefrontSellerMode && (
             <SellerWithdrawModal
               open={paymentHistoryIsWithdrawModalOpen}
-              onClose={() => setPaymentHistoryIsWithdrawModalOpen(false)}
+            onClose={() => setPaymentHistoryIsWithdrawModalOpen(false)}
               sellerEmail={storefrontBuyerEmail}
               withdrawableVnd={sellerAvailableWithdrawVnd}
               onSuccess={handleSellerWithdrawSuccess}
-            />
+          />
           )}
         </div>
       ) : storefrontPage === 'shop-catalog' ? (
@@ -6995,7 +7029,7 @@ export const HomeView = ({
                   />
                 ) : (
                   <span className="text-5xl select-none" aria-hidden>
-                    {ad.image}
+                {ad.image}
                   </span>
                 )}
                 <div className="absolute top-2 right-2 z-10 bg-yellow-400 text-yellow-900 text-[10px] font-bold px-2 py-0.5 rounded flex items-center gap-1 shadow-sm">
@@ -7400,6 +7434,7 @@ export const HomeView = ({
         }}
         onScrollToCatalog={openCatalogPage}
         onDangKyBanHang={() => setShowSellerRegistrationModal(true)}
+        dangKyBanHangLabel={sellerRegHubButtonLabel}
       />
       {/* Hub sau đăng nhập — gian hàng ở trang riêng */}
       </>
@@ -7725,6 +7760,7 @@ export const HomeView = ({
           }
         }}
         onSuccess={() => {
+          setSellerRegRevision(n => n + 1);
           bumpUserNotifRevision();
           bumpMessagesReadRevision();
         }}
@@ -7812,13 +7848,13 @@ export const HomeView = ({
               >
                 <X size={16} className="text-slate-600" />
               </button>
-            </div>
+                </div>
             <div className="px-5 pb-5 pt-1">
               <StorefrontTelegramConnectPanel
                 connected={basicProfile.telegramLinked}
                 onMarkConnectedDemo={handleMarkTelegramLinked}
               />
-            </div>
+              </div>
           </div>
         </div>
       )}
@@ -7867,14 +7903,14 @@ export const HomeView = ({
 
             {twoFAModal === 'disable' ? (
               <>
-                <div className="p-5 space-y-4">
+            <div className="p-5 space-y-4">
                   <div className="flex gap-3 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-3">
                     <AlertCircle size={18} className="shrink-0 text-amber-600 mt-0.5" aria-hidden />
                     <p className="text-[12px] text-amber-900 leading-relaxed">
                       Tắt 2FA làm tài khoản chỉ còn bảo vệ bằng mật khẩu. Nhập <span className="font-bold">mã 6 số hiện tại</span> từ app xác thực để xác nhận.
                     </p>
-                  </div>
-                  <div>
+                </div>
+                <div>
                     <label htmlFor="two-fa-disable-code" className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1.5">
                       Mã xác thực 2FA
                     </label>
@@ -7898,8 +7934,8 @@ export const HomeView = ({
                         <X size={12} aria-hidden /> {twoFAError}
                       </p>
                     )}
-                  </div>
                 </div>
+              </div>
                 <div className="px-5 pb-5 flex gap-2.5">
                   <button
                     type="button"
@@ -7917,7 +7953,7 @@ export const HomeView = ({
                     {twoFASubmitting ? <Loader2 size={16} className="animate-spin" /> : null}
                     Xác nhận tắt
                   </button>
-                </div>
+                  </div>
               </>
             ) : twoFAEnableStep === 'setup' ? (
               <>
@@ -7933,8 +7969,8 @@ export const HomeView = ({
                             key={i}
                             className={`h-2 w-2 rounded-sm ${i % 3 === 0 ? 'bg-slate-800' : 'bg-slate-300'}`}
                           />
-                        ))}
-                      </div>
+                ))}
+              </div>
                       <span className="text-[9px] font-bold text-emerald-800 uppercase tracking-wide">Mã QR</span>
                     </div>
                     <div className="flex-1 min-w-0 w-full space-y-3">
@@ -7952,11 +7988,11 @@ export const HomeView = ({
                           >
                             <Copy size={14} />
                           </button>
-                        </div>
+            </div>
                         {twoFACopyHint ? (
                           <p className="text-[10px] text-emerald-600 font-semibold mt-1">{twoFACopyHint}</p>
                         ) : null}
-                      </div>
+          </div>
                       <div>
                         <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1.5">Mã dự phòng (lưu an toàn)</p>
                         <ul className="space-y-1">

@@ -411,7 +411,6 @@ export function StorefrontMessagesView({
   }, [threads, threadSearch, ownerEmail]);
 
   const showPlatformSupportEntry =
-    isBuyerMode &&
     platformSupportThread &&
     (!threadSearch.trim() ||
       threadMatchesSearchQuery(

@@ -349,7 +349,9 @@ export function ProductRow({
         <div className="min-w-0">
           <div className="text-sm font-bold text-blue-600 hover:text-blue-700 hover:underline cursor-pointer transition-all line-clamp-2 leading-snug">{product.name}</div>
           <div className="flex items-center gap-2 text-[10px] text-slate-400 mt-0.5">
-            <span className="font-mono font-bold bg-slate-50 px-1.5 py-0.5 rounded border border-slate-300">ID: {product.id}</span>
+            <span className="text-[11px] font-mono font-bold text-slate-700 bg-white px-2 py-0.5 rounded-md border border-slate-300 shadow-sm">
+              ID: {product.id}
+            </span>
             <span className="flex items-center gap-1 font-bold">
               <Calendar size={10} /> {product.date}
             </span>

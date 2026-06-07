@@ -1,5 +1,6 @@
 import type { ChatMessageAction, ChatMessageActionStatus } from './messageActions';
 import type { MessagingPersonaId } from './storefrontMessagingPersonas';
+import { isPlatformSupportThreadId } from './storefrontPlatformSupportThread';
 import {
   buildBuyerSellerThreadId,
   buildResellerBuyerThreadId,
@@ -107,9 +108,12 @@ export function getThreadUnreadCount(
   viewerPersona: MessagingPersonaId
 ): number {
   const lastRead = getThreadLastReadAtMs(ownerEmail, threadId);
-  return readRawThread(ownerEmail, threadId).filter(
-    m => m.sender !== viewerPersona && m.sentAtMs > lastRead
-  ).length;
+  const isPlatformSupport = isPlatformSupportThreadId(ownerEmail, threadId);
+  return readRawThread(ownerEmail, threadId).filter(m => {
+    if (m.sentAtMs <= lastRead) return false;
+    if (isPlatformSupport) return m.sender === 'seller';
+    return m.sender !== viewerPersona;
+  }).length;
 }
 
 function dedupeStoredMessages(list: StoredChatMessage[]): StoredChatMessage[] {
@@ -151,6 +155,18 @@ function writeRawThread(ownerEmail: string, threadId: string, messages: StoredCh
   writeStore(store);
 }
 
+function messageSideForViewer(
+  ownerEmail: string,
+  threadId: string,
+  viewerPersona: MessagingPersonaId,
+  sender: MessagingPersonaId
+): MessageSenderSide {
+  if (isPlatformSupportThreadId(ownerEmail, threadId)) {
+    return sender === 'seller' ? 'partner' : 'self';
+  }
+  return sender === viewerPersona ? 'self' : 'partner';
+}
+
 export function readThreadMessagesForViewer(
   ownerEmail: string,
   threadId: string,
@@ -158,12 +174,36 @@ export function readThreadMessagesForViewer(
 ): ViewChatMessage[] {
   return readRawThread(ownerEmail, threadId).map(m => ({
     id: m.id,
-    side: m.sender === viewerPersona ? ('self' as const) : ('partner' as const),
+    side: messageSideForViewer(ownerEmail, threadId, viewerPersona, m.sender),
     sender: m.sender,
     text: m.text,
     sentAtMs: m.sentAtMs,
     action: m.action,
   }));
+}
+
+/** Gộp tin nhắn từ thread hỗ trợ cũ sang thread chuẩn (sau khi đổi khóa thread). */
+export function mergePlatformSupportThreadMessages(
+  ownerEmail: string,
+  canonicalThreadId: string,
+  legacyThreadIds: string[]
+): void {
+  if (!legacyThreadIds.length) return;
+  const store = readStore();
+  const owner = normOwner(ownerEmail);
+  const row = store[owner] ?? {};
+  let merged = [...(row[canonicalThreadId] ?? [])];
+  for (const legacyId of legacyThreadIds) {
+    const legacy = row[legacyId];
+    if (Array.isArray(legacy) && legacy.length) {
+      merged = [...merged, ...legacy];
+    }
+    delete row[legacyId];
+  }
+  merged.sort((a, b) => a.sentAtMs - b.sentAtMs);
+  row[canonicalThreadId] = dedupeStoredMessages(merged).slice(-200);
+  store[owner] = row;
+  writeStore(store);
 }
 
 export function appendThreadMessageWithAction(

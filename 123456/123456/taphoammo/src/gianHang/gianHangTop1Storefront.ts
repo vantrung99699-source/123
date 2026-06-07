@@ -72,6 +72,30 @@ export function applyTop1FlagsToStorefrontProduct<T extends StorefrontGianProduc
   };
 }
 
+/** Gian tài trợ thuộc danh mục đang xem — hiển thị trước trong sidebar / carousel. */
+export function sortSponsoredProductsByCategorySelection<T extends StorefrontGianProductLike>(
+  products: T[],
+  selectedCategoryKeys: string[],
+  ctx: CategoryTop1Resolution
+): T[] {
+  if (selectedCategoryKeys.length === 0) return products;
+
+  const matchesCategory = (p: T) => {
+    const gid = p.adminGianHangId;
+    if (!gid) return false;
+    const key = ctx.gianHangIdToCategoryKey.get(gid);
+    return key != null && selectedCategoryKeys.includes(key);
+  };
+
+  const matched: T[] = [];
+  const rest: T[] = [];
+  for (const p of products) {
+    if (matchesCategory(p)) matched.push(p);
+    else rest.push(p);
+  }
+  return [...matched, ...rest];
+}
+
 /** Ưu tiên gian Top 1 trong từng danh mục (nhiều danh mục có thể cùng có Top 1). */
 export function sortStorefrontProductsWithTop1First<T extends StorefrontGianProductLike>(
   products: T[],

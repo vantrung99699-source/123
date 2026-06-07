@@ -23,9 +23,11 @@ import {
 } from './storefrontMessagesStorage';
 import {
   buildSupportThreadIdForBuyerEmail,
+  listLegacySupportThreadIds,
   TAPHOAMMO_PLATFORM_CHAT_LABEL,
   TAPHOAMMO_SUPPORT_DISPLAY_NAME,
-} from './sellerRegistrationApprovalNotify';
+} from './storefrontPlatformSupportThread';
+import { mergePlatformSupportThreadMessages } from './storefrontMessagesStorage';
 
 export type { MessagePartnerProfile } from './storefrontMessagingPersonas';
 export {
@@ -220,10 +222,12 @@ export function buildStorefrontMessageThreads(input: BuildMessageThreadsInput): 
     }
   }
 
-  if (isStorefrontBuyerAccountMode(accountMode)) {
-    const supportThreadId = buildSupportThreadIdForBuyerEmail(
+  if (currentEmail.trim()) {
+    const supportThreadId = buildSupportThreadIdForBuyerEmail(currentEmail);
+    mergePlatformSupportThreadMessages(
       currentEmail,
-      currentDisplayName || currentLogin
+      supportThreadId,
+      listLegacySupportThreadIds(currentEmail, [currentDisplayName, currentLogin])
     );
     map.set(supportThreadId, {
       orders: [],

@@ -105,7 +105,7 @@ export function SellerRegistrationManagementView({
     }
     rejectSellerRegistration(row.id);
     refresh();
-    setActionHint(`Đã từ chối đăng ký của ${row.fullName}.`);
+    setActionHint(`Đã từ chối đăng ký của ${row.fullName}. Đã gửi thông báo và tin nhắn hỗ trợ.`);
   };
 
   const handleRevoke = (row: SellerRegistrationRequest) => {

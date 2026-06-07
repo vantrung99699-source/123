@@ -11,7 +11,7 @@ export interface StorefrontUserNotification {
   type: StorefrontUserNotificationType;
   createdAtIso: string;
   read: boolean;
-  kind?: 'seller_registration_approved';
+  kind?: 'seller_registration_approved' | 'seller_registration_rejected';
 }
 
 const STORAGE_KEY = 'taphoammo_storefront_user_notifications_v1';

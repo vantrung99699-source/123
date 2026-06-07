@@ -283,6 +283,8 @@ type Props = {
   onHubSearch?: (params: ShopHubSearchParams) => void;
   /** Đăng ký / mở kênh bán hàng (demo: có thể dẫn tới admin). */
   onDangKyBanHang?: () => void;
+  /** Nhãn nút đăng ký (mặc định: Đăng ký bán hàng). */
+  dangKyBanHangLabel?: string;
 };
 
 /**
@@ -298,6 +300,7 @@ export function StorefrontShopHubSections({
   serviceTypesByCategory = {},
   onHubSearch,
   onDangKyBanHang,
+  dangKyBanHangLabel = 'Đăng ký bán hàng',
 }: Props) {
   const goCatalog = () => onScrollToCatalog?.();
 
@@ -339,7 +342,7 @@ export function StorefrontShopHubSections({
                 className="inline-flex shrink-0 items-center justify-center gap-2 self-start rounded-2xl border border-emerald-200/90 bg-white/90 px-4 py-2.5 text-sm font-bold text-emerald-800 shadow-sm ring-1 ring-emerald-500/10 transition hover:border-emerald-300 hover:bg-white hover:shadow-md hover:ring-emerald-500/20 active:scale-[0.98] sm:self-auto"
               >
                 <Store size={18} className="text-emerald-600" strokeWidth={2.25} aria-hidden />
-                Đăng ký bán hàng
+                {dangKyBanHangLabel}
               </button>
             )}
           </div>
