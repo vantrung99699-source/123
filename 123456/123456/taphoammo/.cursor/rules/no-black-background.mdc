@@ -1,0 +1,41 @@
+---
+description: Không dùng nền màu đen — ưu tiên nền sáng cho UI storefront và admin
+alwaysApply: true
+---
+
+# Không dùng background màu đen
+
+## Quy tắc bắt buộc
+
+**Không bao giờ** dùng nền đen hoặc gần đen làm background chính của trang, section, header, card, modal hoặc panel mới.
+
+### Cấm (ví dụ Tailwind)
+
+- `bg-black`
+- `bg-neutral-900`, `bg-neutral-950`
+- `bg-gray-900`, `bg-gray-950`
+- `bg-slate-900`, `bg-slate-950` — **trừ** footer marketing đã có sẵn hoặc khi user yêu cầu rõ ràng giữ nguyên
+- `bg-zinc-900`, `bg-zinc-950`
+- Gradient / overlay phủ toàn vùng bằng đen thuần (`from-black`, `to-black`)
+
+### Cho phép (giới hạn)
+
+- Overlay modal mờ: `bg-slate-900/50`, `bg-slate-900/55` — chỉ lớp phủ, không phải nền nội dung
+- Chữ / icon trên nền sáng: `text-slate-900`, `text-black`
+- Viền / shadow nhẹ: `border-slate-900/10`
+
+## Thay thế nên dùng
+
+| Ngữ cảnh | Gợi ý |
+|----------|--------|
+| Nền trang | `bg-slate-50`, `bg-slate-100`, `bg-white` |
+| Header storefront | `bg-emerald-500`, nền sáng — **không** header đen |
+| Card / panel | `bg-white`, `border-slate-100` |
+| Section phụ | `bg-slate-50/80`, `bg-emerald-50` |
+| Hero / banner | Gradient sáng: `from-emerald-500`, `from-sky-50`, `from-teal-600` |
+
+## Khi sửa code
+
+1. Refactor UI mới theo palette sáng của dự án (emerald, slate nhạt, white).
+2. Không đổi footer hoặc block đặc biệt sang nền đen trừ khi user yêu cầu trực tiếp.
+3. Review diff: nếu thấy `bg-black` hoặc `bg-*-900` làm nền chính → đổi sang nền sáng trước khi hoàn tất.

@@ -1,5 +1,5 @@
 /**
- * Cài đặt thông báo hiển thị trên storefront (marquee, popup toàn trang, toast).
+ * Cài đặt thông báo hiển thị trên storefront (marquee, popup legacy).
  */
 export interface AdminStorefrontNotificationSettings {
   /** Thanh chữ chạy dưới header */
@@ -12,9 +12,6 @@ export interface AdminStorefrontNotificationSettings {
   popupButtonLabel: string;
   /** Chỉ hiện 1 lần mỗi phiên trình duyệt */
   popupOncePerSession: boolean;
-  /** Toast góc phải (demo) */
-  toastEnabled: boolean;
-  toastText: string;
   updatedAtMs: number;
 }
 
@@ -33,8 +30,6 @@ export function defaultStorefrontNotificationSettings(): AdminStorefrontNotifica
       'Chào mừng bạn đến với TapHoaMMO. Vui lòng đọc kỹ chính sách bảo hành và quy định giao dịch trước khi mua hàng.',
     popupButtonLabel: 'Đã hiểu',
     popupOncePerSession: true,
-    toastEnabled: false,
-    toastText: 'Có tin mới từ hệ thống — xem chi tiết tại trang chủ.',
     updatedAtMs: Date.now(),
   };
 }
@@ -63,11 +58,6 @@ function normalize(raw: unknown): AdminStorefrontNotificationSettings {
         ? r.popupButtonLabel.trim()
         : d.popupButtonLabel,
     popupOncePerSession: r.popupOncePerSession !== false,
-    toastEnabled: r.toastEnabled === true,
-    toastText:
-      typeof r.toastText === 'string' && r.toastText.trim()
-        ? r.toastText.trim()
-        : d.toastText,
     updatedAtMs:
       typeof r.updatedAtMs === 'number' && Number.isFinite(r.updatedAtMs)
         ? r.updatedAtMs

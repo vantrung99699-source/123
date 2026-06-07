@@ -14,6 +14,7 @@ type Props = {
   onSelectProductCategory?: (name: string) => void;
   onSelectServiceCategory?: (name: string) => void;
   onOpenFaqs?: () => void;
+  onOpenSupport?: () => void;
   /** Dùng `() => <… />` để mỗi vùng (desktop / menu mobile) có instance riêng — tránh lỗi khi gắn cùng một element hai chỗ. */
   authSlot: ReactNode | (() => ReactNode);
 };
@@ -30,6 +31,7 @@ export function StorefrontGuestHeader({
   onSelectProductCategory,
   onSelectServiceCategory,
   onOpenFaqs,
+  onOpenSupport,
   authSlot,
 }: Props) {
   const { header } = useStorefrontLocale();
@@ -149,12 +151,13 @@ export function StorefrontGuestHeader({
                 )}
               </div>
 
-              <a
-                href="#guest-gioi-thieu"
+              <button
+                type="button"
+                onClick={onOpenSupport}
                 className="px-3.5 py-2 rounded-lg hover:bg-white/15 hover:text-emerald-100 transition-colors"
               >
                 {header.support}
-              </a>
+              </button>
               <a
                 href="#guest-gioi-thieu"
                 className="px-3.5 py-2 rounded-lg hover:bg-white/15 hover:text-emerald-100 transition-colors"
@@ -249,9 +252,16 @@ export function StorefrontGuestHeader({
                     )}
                   </div>
                 </div>
-                <a href="#guest-gioi-thieu" onClick={() => setMobileOpen(false)} className="text-sm">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMobileOpen(false);
+                    onOpenSupport?.();
+                  }}
+                  className="text-sm text-left"
+                >
                   {header.support}
-                </a>
+                </button>
                 <div className="h-px bg-slate-200" />
                 <div className="flex flex-wrap gap-3 items-center">{authMobile}</div>
               </div>

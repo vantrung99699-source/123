@@ -2,13 +2,13 @@ import { useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import {
   CheckCircle2,
-  ExternalLink,
   Facebook,
   Phone,
   Store,
   User,
   X,
 } from 'lucide-react';
+import { StorefrontTelegramConnectPanel } from '../components/StorefrontTelegramConnectPanel';
 import {
   getSellerRegistrationByEmail,
   hasPendingSellerRegistration,
@@ -174,56 +174,16 @@ export function StorefrontSellerRegistrationModal({
                 </div>
               )}
 
-              <div
-                className={`rounded-xl border p-4 ${
-                  telegramConnected
-                    ? 'border-emerald-200 bg-emerald-50/60'
-                    : 'border-[#229ED9]/25 bg-[#229ED9]/5'
-                }`}
-              >
-                <div className="flex items-start gap-3">
-                  <div
-                    className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
-                      telegramConnected ? 'bg-emerald-500 text-white' : 'bg-[#229ED9] text-white'
-                    }`}
-                  >
-                    {telegramConnected ? (
-                      <CheckCircle2 size={20} strokeWidth={2.25} />
-                    ) : (
-                      <span className="font-black text-lg">T</span>
-                    )}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-bold text-slate-800">
-                      {telegramConnected ? 'Đã kết nối Telegram' : 'Kết nối Telegram (bắt buộc)'}
-                    </p>
-                    <p className="text-xs text-slate-600 mt-1 leading-relaxed">
-                      {telegramConnected
-                        ? 'Tài khoản Telegram đã được liên kết. Bạn có thể tiếp tục đăng ký bán hàng.'
-                        : 'Bạn phải kết nối Telegram (@TaphoaMMO_bot) để nhận thông báo và được duyệt đăng ký bán hàng.'}
-                    </p>
-                    {!telegramConnected && isLoggedIn && (
-                      <div className="mt-3 space-y-2">
-                        <a
-                          href="https://t.me/TaphoaMMO_bot"
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-2 rounded-lg bg-[#229ED9] px-3 py-2 text-xs font-bold text-white hover:bg-[#1a8bc4] transition-colors"
-                        >
-                          <ExternalLink size={13} /> Mở Telegram
-                        </a>
-                        <button
-                          type="button"
-                          onClick={handleMarkTelegram}
-                          className="block text-xs font-bold text-[#229ED9] hover:underline"
-                        >
-                          Đánh dấu đã kết nối (demo)
-                        </button>
-                      </div>
-                    )}
-                  </div>
+              {isLoggedIn ? (
+                <StorefrontTelegramConnectPanel
+                  connected={telegramConnected}
+                  onMarkConnectedDemo={handleMarkTelegram}
+                />
+              ) : (
+                <div className="rounded-2xl bg-slate-100/90 px-4 py-4 text-sm text-slate-600 leading-relaxed">
+                  Đăng nhập trước, sau đó kết nối Telegram (@TaphoaMMO_bot) để hoàn tất đăng ký bán hàng.
                 </div>
-              </div>
+              )}
 
               {success ? (
                 <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-5 text-center">

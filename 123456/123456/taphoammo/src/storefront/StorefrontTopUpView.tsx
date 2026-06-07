@@ -15,9 +15,10 @@ import {
   buildVietQrImageUrl,
   STOREFRONT_TOP_UP_BANKS,
   TOP_UP_MIN_VND,
-  TOP_UP_STEP_VND,
   type StorefrontTopUpBank,
 } from './storefrontTopUpBanks';
+import type { StorefrontTopUpNotice } from '../admin/adminStorefrontTopUpNotices';
+import { StorefrontTopUpNotices } from '../components/StorefrontTopUpNotices';
 
 export type TopUpHistoryStatus = 'pending' | 'success' | 'failed';
 
@@ -86,12 +87,14 @@ export interface StorefrontTopUpViewProps {
   walletBalanceVnd: number;
   transferUserCode: string;
   paymentHistoryCheckoutItems: PaymentHistoryItem[];
+  topUpNotices?: StorefrontTopUpNotice[];
 }
 
 export function StorefrontTopUpView({
   walletBalanceVnd,
   transferUserCode,
   paymentHistoryCheckoutItems,
+  topUpNotices = [],
 }: StorefrontTopUpViewProps) {
   const [selectedBankId, setSelectedBankId] = useState(STOREFRONT_TOP_UP_BANKS[0].id);
   const [amountInput, setAmountInput] = useState('');
@@ -116,8 +119,7 @@ export function StorefrontTopUpView({
   );
 
   /** QR luôn hiển thị: chưa nhập số tiền thì VietQR không gắn amount (0), vẫn có STK + nội dung CK. */
-  const qrAmountVnd =
-    amountVnd >= TOP_UP_MIN_VND && amountVnd % TOP_UP_STEP_VND === 0 ? amountVnd : 0;
+  const qrAmountVnd = amountVnd >= TOP_UP_MIN_VND ? amountVnd : 0;
 
   const qrUrl = useMemo(
     () => buildVietQrImageUrl(selectedBank, qrAmountVnd, transferContent),
@@ -182,6 +184,8 @@ export function StorefrontTopUpView({
           </p>
         </div>
 
+        <StorefrontTopUpNotices notices={topUpNotices} />
+
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 mb-8">
           <div className="lg:col-span-5 space-y-6">
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
@@ -207,7 +211,7 @@ export function StorefrontTopUpView({
                 placeholder="Nhập số tiền"
               />
               <p className="text-[11px] text-slate-500 mt-1.5">
-                Tối thiểu {formatVnd(TOP_UP_MIN_VND)} · bội số {formatVnd(TOP_UP_STEP_VND)}
+                Tối thiểu {formatVnd(TOP_UP_MIN_VND)}
               </p>
               <div className="flex flex-wrap gap-2 mt-3">
                 {quickAmounts.map(amt => (
@@ -279,7 +283,7 @@ export function StorefrontTopUpView({
 
               <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="flex flex-col items-center">
-                  <div className="w-full max-w-[240px] aspect-square rounded-2xl border-2 border-slate-100 bg-white flex items-center justify-center overflow-hidden shadow-inner">
+                  <div className="w-full max-w-[300px] aspect-square rounded-2xl border-2 border-slate-100 bg-white flex items-center justify-center overflow-hidden shadow-inner">
                     {!qrError ? (
                       <img
                         src={qrUrl}

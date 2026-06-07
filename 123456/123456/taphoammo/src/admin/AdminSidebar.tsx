@@ -52,7 +52,7 @@ interface MenuItem {
 
 const SETTINGS_CHILDREN: { id: AdminView; label: string }[] = [
   { id: 'general-settings', label: 'Giới hạn & chính sách' },
-  { id: 'notification-settings', label: 'Cài đặt thông báo' },
+  { id: 'notification-settings', label: 'Thông báo người dùng' },
   { id: 'seller-registrations', label: 'Đơn đăng ký bán hàng' },
 ];
 

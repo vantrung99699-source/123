@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Search, Bell, ChevronDown, Shield, Star, User, Filter, TrendingUp, Eye, CheckCircle, CheckCircle2, ArrowRight, ChevronRight, ChevronLeft, X, LogOut, Clock, Wallet, Calendar, ShoppingBag, Package, FileText, ExternalLink, Settings, Edit2, Phone, Mail, MessageCircle, ArrowLeft, Loader2, AlertCircle, Store, Handshake, Copy, Monitor, Smartphone, Tablet } from 'lucide-react';
+import { Search, Bell, ChevronDown, Shield, Star, User, Filter, TrendingUp, Eye, CheckCircle, CheckCircle2, ArrowRight, ChevronRight, ChevronLeft, X, LogOut, Clock, Wallet, Calendar, ShoppingBag, Package, FileText, ExternalLink, Settings, Edit2, Phone, Mail, MessageCircle, ArrowLeft, Loader2, AlertCircle, Store, Handshake, Copy, Monitor, Smartphone, Tablet, MoreVertical } from 'lucide-react';
 import { PurchasedOrdersView } from './PurchasedOrdersView';
 import { orderIdSortKey, orderNewestSortKey, type DeliveredWarehouseItem, type Order } from './ordersTypes';
 import type { FulfillPurchaseResult } from './storefront/fulfillPurchase';
@@ -16,11 +16,13 @@ import {
 } from './storefront/defectiveItemUpload';
 import { appendSellerSoldWarehouseEntries } from './storefront/sellerSoldWarehouse';
 import type { PaymentHistory } from './admin/types';
+import { readStorefrontNotificationSettings } from './admin/adminStorefrontNotificationSettings';
 import {
-  isStorefrontPopupDismissedThisSession,
-  markStorefrontPopupDismissedThisSession,
-  readStorefrontNotificationSettings,
-} from './admin/adminStorefrontNotificationSettings';
+  markStorefrontPopupDismissed,
+  resolveActiveStorefrontPopup,
+  type StorefrontPopupNotification,
+} from './admin/adminStorefrontPopupNotifications';
+import { listActiveStorefrontTopUpNotices } from './admin/adminStorefrontTopUpNotices';
 import { OrderDetailView } from './OrderDetailView';
 import { ServiceOrderDetailView } from './ServiceOrderDetailView';
 import {
@@ -63,6 +65,11 @@ import {
   setStorefrontTelegramLinked,
 } from './storefront/storefrontBasicProfile';
 import { StorefrontSellerRegistrationModal } from './storefront/StorefrontSellerRegistrationModal';
+import { isSellerRegistrationApproved } from './storefront/storefrontSellerRegistration';
+import {
+  isStorefrontTelegramOrderNotifEnabled,
+  setStorefrontTelegramOrderNotifEnabled,
+} from './storefront/storefrontTelegramNotificationPrefs';
 import {
   countUnreadStorefrontUserNotifications,
   listStorefrontUserNotifications,
@@ -79,12 +86,15 @@ import {
 } from './auth/storefrontLoginSessions';
 import { StorefrontGuestHeader } from './components/StorefrontGuestHeader';
 import { StorefrontHeaderNavCategoryDropdown } from './components/StorefrontHeaderNavCategoryDropdown';
+import { StorefrontTelegramConnectPanel } from './components/StorefrontTelegramConnectPanel';
+import { StorefrontTelegramConnectSuccessModal } from './components/StorefrontTelegramConnectSuccessModal';
 import { StorefrontGuestLanding } from './components/StorefrontGuestLanding';
 import { StorefrontLandingFooter } from './components/StorefrontLandingFooter';
 import {
   StorefrontInfoPage,
   type StorefrontInfoTabId,
 } from './components/StorefrontInfoPage';
+import { StorefrontSupportPage } from './components/StorefrontSupportPage';
 import { buildSupportThreadIdForBuyerEmail } from './storefront/sellerRegistrationApprovalNotify';
 import { StorefrontTopBar } from './components/StorefrontTopBar';
 import {
@@ -2150,7 +2160,7 @@ const ProductDetailView = ({
                     }`}
                   />
                   <span className="text-[11px] text-gray-500">
-                    Mặc định {DELIVERY_DEADLINE_DAYS_DEFAULT} · Tối đa {DELIVERY_DEADLINE_DAYS_MAX} ngày
+                    Tối đa {DELIVERY_DEADLINE_DAYS_MAX} ngày
                   </span>
                 </div>
                 {!isServiceProduct && maxPurchasableStock > 0 && (
@@ -3638,6 +3648,8 @@ export const HomeView = ({
 
   const refreshNotificationSettings = useCallback(() => {
     setNotificationSettings(readStorefrontNotificationSettings());
+    setPopupNotificationsRevision(r => r + 1);
+    setTopUpNoticesRevision(r => r + 1);
   }, []);
 
   useEffect(() => {
@@ -3645,28 +3657,6 @@ export const HomeView = ({
     window.addEventListener('focus', onFocus);
     return () => window.removeEventListener('focus', onFocus);
   }, [refreshNotificationSettings]);
-
-  useEffect(() => {
-    if (!storefrontLoggedIn) {
-      setStorefrontPopupOpen(false);
-      setStorefrontToastVisible(false);
-      return;
-    }
-    const s = readStorefrontNotificationSettings();
-    setNotificationSettings(s);
-    if (s.popupEnabled) {
-      const skip = s.popupOncePerSession && isStorefrontPopupDismissedThisSession();
-      setStorefrontPopupOpen(!skip);
-    } else {
-      setStorefrontPopupOpen(false);
-    }
-    if (s.toastEnabled) {
-      setStorefrontToastVisible(true);
-      const t = window.setTimeout(() => setStorefrontToastVisible(false), 6500);
-      return () => window.clearTimeout(t);
-    }
-    setStorefrontToastVisible(false);
-  }, [storefrontLoggedIn]);
 
   type StorefrontLine = 'Bán sản phẩm' | 'Dịch vụ';
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
@@ -3686,12 +3676,14 @@ export const HomeView = ({
     | 'top-up'
     | 'messages'
     | 'info'
+    | 'support'
   >('shop');
   const [storefrontInfoTab, setStorefrontInfoTab] = useState<StorefrontInfoTabId>('about');
   const [guestInfoTab, setGuestInfoTab] = useState<StorefrontInfoTabId | null>(null);
   const [accountTab, setAccountTab] = useState<'settings' | 'basic'>('settings');
   const [publicProfileSeller, setPublicProfileSeller] = useState<string | null>(null);
   const [loginSessionsRevision, setLoginSessionsRevision] = useState(0);
+  const [openLoginSessionMenuId, setOpenLoginSessionMenuId] = useState<string | null>(null);
   const [messagesInitialThreadId, setMessagesInitialThreadId] = useState<string | null>(null);
   const [messagesReadRevision, setMessagesReadRevision] = useState(0);
   const [userNotifRevision, setUserNotifRevision] = useState(0);
@@ -3714,7 +3706,54 @@ export const HomeView = ({
     readStorefrontNotificationSettings()
   );
   const [storefrontPopupOpen, setStorefrontPopupOpen] = useState(false);
-  const [storefrontToastVisible, setStorefrontToastVisible] = useState(false);
+  const [activeStorefrontPopup, setActiveStorefrontPopup] = useState<StorefrontPopupNotification | null>(
+    null
+  );
+  const [popupNotificationsRevision, setPopupNotificationsRevision] = useState(0);
+  const [topUpNoticesRevision, setTopUpNoticesRevision] = useState(0);
+  const activeTopUpNotices = useMemo(
+    () => listActiveStorefrontTopUpNotices(),
+    [topUpNoticesRevision, popupNotificationsRevision]
+  );
+
+  useEffect(() => {
+    if (!storefrontLoggedIn) {
+      setStorefrontPopupOpen(false);
+      setActiveStorefrontPopup(null);
+      return;
+    }
+    setNotificationSettings(readStorefrontNotificationSettings());
+    const isHomePage =
+      storefrontPage === 'shop' &&
+      selectedProduct === null &&
+      storefrontOrderDetailId === null;
+    const popup = resolveActiveStorefrontPopup({
+      loggedIn: true,
+      isHomePage,
+    });
+    setActiveStorefrontPopup(popup);
+    setStorefrontPopupOpen(Boolean(popup));
+  }, [
+    storefrontLoggedIn,
+    storefrontPage,
+    selectedProduct,
+    storefrontOrderDetailId,
+    popupNotificationsRevision,
+  ]);
+
+  useEffect(() => {
+    if (!storefrontPopupOpen || !activeStorefrontPopup?.autoCloseEnabled) return;
+    const ms = Math.max(1, activeStorefrontPopup.autoCloseHours) * 3_600_000;
+    const t = window.setTimeout(() => {
+      if (activeStorefrontPopup.oncePerSession) {
+        markStorefrontPopupDismissed(activeStorefrontPopup.id);
+      }
+      setStorefrontPopupOpen(false);
+      setActiveStorefrontPopup(null);
+    }, ms);
+    return () => window.clearTimeout(t);
+  }, [storefrontPopupOpen, activeStorefrontPopup]);
+
   const [storefrontAccountMode, setStorefrontAccountModeState] = useState<StorefrontAccountMode>(() =>
     getStorefrontAccountMode()
   );
@@ -3767,6 +3806,9 @@ export const HomeView = ({
   const [showEditProfile, setShowEditProfile] = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [showTelegramModal, setShowTelegramModal] = useState(false);
+  const [showTelegramConnectSuccess, setShowTelegramConnectSuccess] = useState(false);
+  const [showTelegramDisconnectConfirm, setShowTelegramDisconnectConfirm] = useState(false);
+  const [telegramNotifPrefsTick, setTelegramNotifPrefsTick] = useState(0);
   const [showSellerRegistrationModal, setShowSellerRegistrationModal] = useState(false);
   const [registerPanelSignal, setRegisterPanelSignal] = useState(0);
   const [telegramLinkTick, setTelegramLinkTick] = useState(0);
@@ -3955,6 +3997,16 @@ export const HomeView = ({
     );
     openMessagesPage(threadId);
   }, [storefrontBuyerEmail, storefrontHeaderDisplayName, openMessagesPage]);
+
+  const openStorefrontSupportPage = useCallback(() => {
+    setSelectedProduct(null);
+    setStorefrontOrderDetailId(null);
+    setPublicProfileSeller(null);
+    setHeaderDropdown(null);
+    setUserMenuOpen(false);
+    setStorefrontPage('support');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, []);
 
   const openStorefrontInfo = useCallback(
     (tab: StorefrontInfoTabId) => {
@@ -4273,6 +4325,54 @@ export const HomeView = ({
     setRegisterPanelSignal(n => n + 1);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, []);
+
+  const handleMarkTelegramLinked = useCallback(() => {
+    setStorefrontTelegramLinked(storefrontBuyerEmail, true);
+    setTelegramLinkTick(t => t + 1);
+    setShowTelegramModal(false);
+    setShowTelegramConnectSuccess(true);
+  }, [storefrontBuyerEmail]);
+
+  const isStorefrontSellerForTelegram =
+    isStorefrontSellerMode ||
+    basicProfile.gianHangCount > 0 ||
+    isSellerRegistrationApproved(storefrontBuyerEmail);
+
+  const telegramOrderNotifEnabled = useMemo(
+    () => isStorefrontTelegramOrderNotifEnabled(storefrontBuyerEmail),
+    [storefrontBuyerEmail, telegramNotifPrefsTick]
+  );
+
+  const toggleTelegramOrderNotif = useCallback(() => {
+    setStorefrontTelegramOrderNotifEnabled(
+      storefrontBuyerEmail,
+      !isStorefrontTelegramOrderNotifEnabled(storefrontBuyerEmail)
+    );
+    setTelegramNotifPrefsTick(t => t + 1);
+  }, [storefrontBuyerEmail]);
+
+  const handleLogoutLoginSession = useCallback(
+    (session: StorefrontLoginSession) => {
+      revokeStorefrontLoginSession(storefrontBuyerEmail, session.id);
+      setLoginSessionsRevision(r => r + 1);
+      setOpenLoginSessionMenuId(null);
+      if (session.id === currentLoginSessionId) {
+        onStorefrontLogout();
+      }
+    },
+    [storefrontBuyerEmail, currentLoginSessionId, onStorefrontLogout]
+  );
+
+  const handleDisconnectTelegram = useCallback(() => {
+    setShowTelegramDisconnectConfirm(true);
+  }, []);
+
+  const confirmDisconnectTelegram = useCallback(() => {
+    setStorefrontTelegramLinked(storefrontBuyerEmail, false);
+    setTelegramLinkTick(t => t + 1);
+    setShowTelegramDisconnectConfirm(false);
+    setShowTelegramModal(false);
+  }, [storefrontBuyerEmail]);
 
   useEffect(() => {
     if (!storefrontLoggedIn || !storefrontBuyerEmail.trim()) return;
@@ -5200,7 +5300,17 @@ export const HomeView = ({
                   />
                 )}
               </div>
-              <a href="#" className="px-3.5 py-2 rounded-lg hover:bg-white/15 hover:text-emerald-100 transition-colors">{headerT.support}</a>
+              <button
+                type="button"
+                onClick={openStorefrontSupportPage}
+                className={`px-3.5 py-2 rounded-lg transition-colors ${
+                  storefrontPage === 'support'
+                    ? 'bg-white/20 text-white font-semibold'
+                    : 'hover:bg-white/15 hover:text-emerald-100'
+                }`}
+              >
+                {headerT.support}
+              </button>
               <a href="#" className="px-3.5 py-2 rounded-lg hover:bg-white/15 hover:text-emerald-100 transition-colors">{headerT.share}</a>
               <a href="#" className="px-3.5 py-2 rounded-lg hover:bg-white/15 hover:text-emerald-100 transition-colors flex items-center gap-1">{headerT.tools} <ChevronDown size={14} className="opacity-90" /></a>
               <a href="#" className="px-3.5 py-2 rounded-lg hover:bg-white/15 hover:text-emerald-100 transition-colors">{headerT.faqs}</a>
@@ -5588,6 +5698,7 @@ export const HomeView = ({
           onSelectProductCategory={name => openGuestCatalogWithCategory(name, 'Bán sản phẩm')}
           onSelectServiceCategory={name => openGuestCatalogWithCategory(name, 'Dịch vụ')}
           onOpenFaqs={() => openStorefrontInfo('faq')}
+          onOpenSupport={openStorefrontSupportPage}
           authSlot={() => (
             <StorefrontAuthDropdown
               onLoginSuccess={onStorefrontLoginSuccess}
@@ -5622,7 +5733,8 @@ export const HomeView = ({
       storefrontPage !== 'my-orders' &&
       storefrontPage !== 'reseller-hub' &&
       storefrontPage !== 'top-up' &&
-      storefrontPage !== 'messages' ? (
+      storefrontPage !== 'messages' &&
+      storefrontPage !== 'support' ? (
         detailOrder.order_type === 'service' ? (
           <ServiceOrderDetailView
             order={detailOrder}
@@ -5727,6 +5839,24 @@ export const HomeView = ({
           <StorefrontLandingFooter
             onChatSupport={openStorefrontSupportChat}
             onJoinSeller={() => setShowSellerRegistrationModal(true)}
+            onOpenInfo={openStorefrontInfo}
+          />
+        </>
+      ) : storefrontPage === 'support' ? (
+        <>
+          <StorefrontSupportPage
+            isLoggedIn={storefrontLoggedIn}
+            onOpenSupportChat={openStorefrontSupportChat}
+            onRequireLogin={openStorefrontRegister}
+            onOpenFaqs={() => openStorefrontInfo('faq')}
+          />
+          <StorefrontLandingFooter
+            onChatSupport={storefrontLoggedIn ? openStorefrontSupportChat : openStorefrontRegister}
+            onJoinSeller={
+              storefrontLoggedIn
+                ? () => setShowSellerRegistrationModal(true)
+                : openStorefrontRegister
+            }
             onOpenInfo={openStorefrontInfo}
           />
         </>
@@ -5901,6 +6031,7 @@ export const HomeView = ({
             walletBalanceVnd={walletBalanceVnd}
             transferUserCode={getSessionLoginUsername() || storefrontBuyerName}
             paymentHistoryCheckoutItems={paymentHistoryCheckoutItems}
+            topUpNotices={activeTopUpNotices}
           />
         ) : (
           <div className="min-h-screen bg-[#F8FAFC] p-8">
@@ -6120,18 +6251,92 @@ export const HomeView = ({
                 </div>
 
                 {/* Kết nối Telegram */}
-                <button onClick={() => setShowTelegramModal(true)} className="w-full flex items-center justify-between px-4 py-3 rounded-xl bg-slate-50 hover:bg-[#229ED9]/10 transition-colors group">
-                  <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-xl bg-[#229ED9]/10 border border-[#229ED9]/20 flex items-center justify-center">
-                      <ExternalLink size={16} className="text-[#229ED9]" />
+                <div className="rounded-xl bg-slate-50 overflow-hidden">
+                  <button
+                    type="button"
+                    onClick={() => setShowTelegramModal(true)}
+                    className="w-full flex items-center justify-between px-4 py-3 hover:bg-[#229ED9]/10 transition-colors group"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div
+                        className={`w-9 h-9 rounded-xl flex items-center justify-center border ${
+                          basicProfile.telegramLinked
+                            ? 'bg-emerald-50 border-emerald-200'
+                            : 'bg-[#229ED9]/10 border-[#229ED9]/20'
+                        }`}
+                      >
+                        {basicProfile.telegramLinked ? (
+                          <CheckCircle2 size={16} className="text-emerald-600" />
+                        ) : (
+                          <ExternalLink size={16} className="text-[#229ED9]" />
+                        )}
+                      </div>
+                      <div className="text-left">
+                        <p className="text-[13px] font-semibold text-slate-800">Kết nối Telegram</p>
+                        <p className="text-[11px] text-slate-400">
+                          {basicProfile.telegramLinked
+                            ? 'Đã liên kết @TaphoaMMO_bot'
+                            : 'Nhận thông báo qua Telegram'}
+                        </p>
+                      </div>
                     </div>
-                    <div className="text-left">
-                      <p className="text-[13px] font-semibold text-slate-800">Kết nối Telegram</p>
-                      <p className="text-[11px] text-slate-400">Nhận thông báo qua Telegram</p>
+                    <span
+                      className={`text-[11px] font-bold px-2.5 py-1 rounded-full ${
+                        basicProfile.telegramLinked
+                          ? 'text-emerald-700 bg-emerald-100'
+                          : 'text-[#229ED9] bg-[#229ED9]/10'
+                      }`}
+                    >
+                      {basicProfile.telegramLinked ? 'Đã kết nối' : 'Kết nối'}
+                    </span>
+                  </button>
+                  {basicProfile.telegramLinked && (
+                    <div className="border-t border-slate-200/80">
+                      <div className="px-4 py-3 bg-sky-50/50">
+                        <p className="text-[11px] text-slate-600 leading-relaxed">
+                          <span className="font-bold text-slate-700">Luôn bật:</span> tin nhắn mới và thông báo từ admin.
+                        </p>
+                      </div>
+                      {isStorefrontSellerForTelegram && (
+                        <div className="flex items-center justify-between gap-3 px-4 py-3 border-t border-slate-200/60">
+                          <div className="min-w-0">
+                            <p className="text-[13px] font-semibold text-slate-800">Thông báo đơn hàng mới</p>
+                            <p className="text-[11px] text-slate-500 mt-0.5">
+                              Telegram khi có đơn mới tại gian hàng
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            role="switch"
+                            aria-checked={telegramOrderNotifEnabled}
+                            aria-label="Bật hoặc tắt thông báo đơn hàng mới qua Telegram"
+                            onClick={toggleTelegramOrderNotif}
+                            className={`relative h-7 w-12 shrink-0 rounded-full border-2 transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#229ED9]/50 focus-visible:ring-offset-2 ${
+                              telegramOrderNotifEnabled
+                                ? 'border-[#229ED9] bg-[#2AABEE] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.15)]'
+                                : 'border-slate-300 bg-slate-200'
+                            }`}
+                          >
+                            <span
+                              className={`absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow-md transition-transform duration-200 ${
+                                telegramOrderNotifEnabled ? 'translate-x-5' : 'translate-x-0'
+                              }`}
+                            />
+                          </button>
+                        </div>
+                      )}
+                      <div className="px-4 pb-3">
+                        <button
+                          type="button"
+                          onClick={handleDisconnectTelegram}
+                          className="w-full py-2 rounded-lg border border-rose-200 bg-white text-rose-700 text-[12px] font-bold hover:bg-rose-50 transition-colors"
+                        >
+                          Ngắt kết nối Telegram
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                  <span className="text-[11px] font-bold text-[#229ED9] bg-[#229ED9]/10 px-2.5 py-1 rounded-full">Kết nối</span>
-                </button>
+                  )}
+                </div>
 
                 {/* Đổi mật khẩu */}
                 <button onClick={() => setShowPasswordModal(true)} className="w-full flex items-center justify-between px-4 py-3 rounded-xl bg-slate-50 hover:bg-slate-100 transition-colors group">
@@ -6231,22 +6436,50 @@ export const HomeView = ({
                           </p>
                         </div>
                       </div>
-                      {!isCurrent ? (
+                      <div className="relative self-start sm:self-center shrink-0">
                         <button
                           type="button"
-                          onClick={() => {
-                            revokeStorefrontLoginSession(storefrontBuyerEmail, session.id);
-                            setLoginSessionsRevision(r => r + 1);
-                          }}
-                          className="self-start sm:self-center shrink-0 px-3 py-1.5 rounded-lg text-[11px] font-bold text-rose-700 bg-rose-50 border border-rose-100 hover:bg-rose-100 transition-colors"
+                          aria-label="Tùy chọn phiên đăng nhập"
+                          aria-expanded={openLoginSessionMenuId === session.id}
+                          aria-haspopup="menu"
+                          onClick={() =>
+                            setOpenLoginSessionMenuId(prev =>
+                              prev === session.id ? null : session.id
+                            )
+                          }
+                          className={`w-9 h-9 rounded-xl flex items-center justify-center border transition-colors ${
+                            openLoginSessionMenuId === session.id
+                              ? 'bg-slate-200 border-slate-300 text-slate-700'
+                              : 'bg-white border-slate-200 text-slate-400 hover:text-slate-600 hover:bg-slate-100'
+                          }`}
                         >
-                          Thu hồi phiên
+                          <MoreVertical size={16} />
                         </button>
-                      ) : (
-                        <span className="self-start sm:self-center shrink-0 text-[11px] font-semibold text-emerald-700 bg-white border border-emerald-200 px-2.5 py-1 rounded-lg">
-                          Đang dùng
-                        </span>
-                      )}
+                        {openLoginSessionMenuId === session.id && (
+                          <>
+                            <button
+                              type="button"
+                              className="fixed inset-0 z-[80] cursor-default"
+                              aria-label="Đóng menu"
+                              onClick={() => setOpenLoginSessionMenuId(null)}
+                            />
+                            <div
+                              role="menu"
+                              className="absolute right-0 top-full mt-1.5 z-[90] min-w-[168px] rounded-xl border border-slate-200 bg-white py-1 shadow-xl"
+                            >
+                              <button
+                                type="button"
+                                role="menuitem"
+                                onClick={() => handleLogoutLoginSession(session)}
+                                className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-left text-[12px] font-bold text-rose-700 hover:bg-rose-50 transition-colors"
+                              >
+                                <LogOut size={14} className="shrink-0" aria-hidden />
+                                Đăng xuất phiên
+                              </button>
+                            </div>
+                          </>
+                        )}
+                      </div>
                     </div>
                   );
                 })}
@@ -7194,6 +7427,7 @@ export const HomeView = ({
           onSelectProductCategory={name => openGuestCatalogWithCategory(name, 'Bán sản phẩm')}
           onSelectServiceCategory={name => openGuestCatalogWithCategory(name, 'Dịch vụ')}
           onOpenFaqs={() => openStorefrontInfo('faq')}
+          onOpenSupport={openStorefrontSupportPage}
           authSlot={() => (
             <StorefrontAuthDropdown
               onLoginSuccess={onStorefrontLoginSuccess}
@@ -7201,7 +7435,22 @@ export const HomeView = ({
             />
           )}
         />
-        {guestInfoTab ? (
+        {storefrontPage === 'support' ? (
+          <>
+            <StorefrontSupportPage
+              isLoggedIn={false}
+              onOpenSupportChat={openStorefrontSupportChat}
+              onRequireLogin={openStorefrontRegister}
+              onOpenFaqs={() => openStorefrontInfo('faq')}
+              fixedHeaderOffset
+            />
+            <StorefrontLandingFooter
+              onChatSupport={openStorefrontRegister}
+              onJoinSeller={openStorefrontRegister}
+              onOpenInfo={openStorefrontInfo}
+            />
+          </>
+        ) : guestInfoTab ? (
           <>
             <StorefrontInfoPage
               key={guestInfoTab}
@@ -7230,7 +7479,7 @@ export const HomeView = ({
       )}
 
 
-      {storefrontLoggedIn && storefrontPopupOpen && notificationSettings.popupEnabled ? (
+      {storefrontLoggedIn && storefrontPopupOpen && activeStorefrontPopup ? (
         <div
           className="fixed inset-0 z-[180] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm"
           role="dialog"
@@ -7243,24 +7492,26 @@ export const HomeView = ({
           >
             <div className="px-5 py-4 border-b border-slate-100 bg-gradient-to-r from-emerald-50 to-sky-50">
               <h2 id="storefront-popup-title" className="text-lg font-bold text-slate-900">
-                {notificationSettings.popupTitle}
+                {activeStorefrontPopup.title}
               </h2>
             </div>
-            <div className="px-5 py-5 text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">
-              {notificationSettings.popupContent}
-            </div>
+            <div
+              className="px-5 py-5 text-sm text-slate-700 leading-relaxed prose prose-sm max-w-none"
+              dangerouslySetInnerHTML={{ __html: activeStorefrontPopup.content }}
+            />
             <div className="px-5 py-4 bg-slate-50 border-t border-slate-100 flex justify-end">
               <button
                 type="button"
                 onClick={() => {
-                  if (notificationSettings.popupOncePerSession) {
-                    markStorefrontPopupDismissedThisSession();
+                  if (activeStorefrontPopup.oncePerSession) {
+                    markStorefrontPopupDismissed(activeStorefrontPopup.id);
                   }
                   setStorefrontPopupOpen(false);
+                  setActiveStorefrontPopup(null);
                 }}
                 className="px-5 py-2.5 rounded-xl text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-700"
               >
-                {notificationSettings.popupButtonLabel}
+                {activeStorefrontPopup.buttonLabel}
               </button>
             </div>
           </div>
@@ -7281,24 +7532,6 @@ export const HomeView = ({
             type="button"
             onClick={() => setUserNotifToast(null)}
             className="shrink-0 p-1 rounded-lg hover:bg-white/10 text-emerald-100"
-            aria-label="Đóng"
-          >
-            <X size={14} />
-          </button>
-        </div>
-      ) : null}
-
-      {storefrontLoggedIn && storefrontToastVisible && notificationSettings.toastEnabled ? (
-        <div
-          className="fixed bottom-6 right-6 z-[170] max-w-sm px-4 py-3 rounded-xl bg-slate-900 text-white text-sm font-medium shadow-2xl border border-slate-700 flex items-start gap-3"
-          role="status"
-        >
-          <Bell size={18} className="shrink-0 text-amber-300 mt-0.5" />
-          <span className="leading-snug">{notificationSettings.toastText}</span>
-          <button
-            type="button"
-            onClick={() => setStorefrontToastVisible(false)}
-            className="shrink-0 p-1 rounded-lg hover:bg-white/10 text-slate-300"
             aria-label="Đóng"
           >
             <X size={14} />
@@ -7484,10 +7717,7 @@ export const HomeView = ({
         userEmail={storefrontBuyerEmail}
         displayName={storefrontHeaderDisplayName}
         telegramLinked={basicProfile.telegramLinked}
-        onMarkTelegramLinked={() => {
-          setStorefrontTelegramLinked(storefrontBuyerEmail, true);
-          setTelegramLinkTick(t => t + 1);
-        }}
+        onMarkTelegramLinked={handleMarkTelegramLinked}
         onRequireLogin={() => {
           setShowSellerRegistrationModal(false);
           if (!storefrontLoggedIn) {
@@ -7500,73 +7730,94 @@ export const HomeView = ({
         }}
       />
 
+      {showTelegramDisconnectConfirm && (
+        <div
+          className="fixed inset-0 z-[210] flex items-center justify-center p-4 bg-slate-900/55 backdrop-blur-sm"
+          onClick={() => setShowTelegramDisconnectConfirm(false)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden"
+            onClick={e => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="telegram-disconnect-title"
+          >
+            <div className="px-6 py-4 flex items-center justify-between bg-gradient-to-r from-rose-500 to-red-600">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="w-8 h-8 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
+                  <AlertCircle size={16} className="text-white" />
+                </div>
+                <h3 id="telegram-disconnect-title" className="text-[15px] font-black text-white">
+                  Ngắt kết nối Telegram
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowTelegramDisconnectConfirm(false)}
+                className="w-7 h-7 rounded-full bg-white/15 hover:bg-white/25 flex items-center justify-center transition-colors shrink-0"
+                aria-label="Đóng"
+              >
+                <X size={14} className="text-white" />
+              </button>
+            </div>
+            <div className="p-5 space-y-4">
+              <p className="text-sm text-slate-700 leading-relaxed">
+                Bạn có chắc muốn <span className="font-bold text-slate-900">ngắt kết nối Telegram</span> không?
+              </p>
+              <div className="rounded-xl border border-rose-100 bg-rose-50 px-3.5 py-3 text-[12px] text-rose-900 leading-relaxed">
+                Sau khi ngắt, bạn sẽ không nhận thông báo qua <span className="font-bold">@TaphoaMMO_bot</span> cho đến khi kết nối lại.
+              </div>
+              <div className="flex gap-3 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setShowTelegramDisconnectConfirm(false)}
+                  className="flex-1 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-700 text-sm font-bold hover:bg-slate-50 transition-colors"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="button"
+                  onClick={confirmDisconnectTelegram}
+                  className="flex-1 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-sm font-bold transition-colors"
+                >
+                  Ngắt kết nối
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <StorefrontTelegramConnectSuccessModal
+        open={showTelegramConnectSuccess}
+        onClose={() => setShowTelegramConnectSuccess(false)}
+        showSellerOrderHint={isStorefrontSellerForTelegram}
+      />
+
       {showTelegramModal && (
         <div
           className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm"
           onClick={() => setShowTelegramModal(false)}
         >
           <div
-            className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden"
+            className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden"
             onClick={e => e.stopPropagation()}
           >
-            {/* Header Telegram */}
-            <div className="bg-[#229ED9] px-6 py-4 flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-xl bg-white/20 flex items-center justify-center">
-                  <ExternalLink size={15} className="text-white" />
-                </div>
-                <h3 className="text-[15px] font-black text-white">Kết nối Telegram</h3>
-              </div>
-              <button onClick={() => setShowTelegramModal(false)} className="w-7 h-7 rounded-full bg-white/15 hover:bg-white/25 flex items-center justify-center transition-colors">
-                <X size={14} className="text-white" />
-              </button>
-            </div>
-            <div className="p-5 space-y-4">
-              {/* Bot info */}
-              <div className="flex items-center gap-3 p-3.5 bg-[#229ED9]/8 rounded-xl border border-[#229ED9]/20">
-                <div className="w-12 h-12 rounded-full bg-[#229ED9] flex items-center justify-center shrink-0 shadow-md">
-                  <span className="text-white font-black text-xl">T</span>
-                </div>
-                <div>
-                  <p className="text-[13px] font-bold text-slate-800">@TaphoaMMO_bot</p>
-                  <p className="text-[11px] text-slate-500 mt-0.5">Bot thông báo chính thức của TaphoaMMO</p>
-                  <p className="text-[11px] text-[#229ED9] font-semibold mt-0.5">✓ Đã xác minh bởi sàn</p>
-                </div>
-              </div>
-              {/* Steps */}
-              <div className="space-y-2.5">
-                <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wide">Các bước thực hiện</p>
-                {[
-                  { step: '1', text: 'Mở Telegram và tìm kiếm', bold: '@TaphoaMMO_bot' },
-                  { step: '2', text: 'Nhấn', bold: 'Start / Bắt đầu' },
-                  { step: '3', text: 'Gửi lệnh', bold: '/connect ' + storefrontBuyerName },
-                ].map(({ step, text, bold }) => (
-                  <div key={step} className="flex items-start gap-3">
-                    <span className="w-6 h-6 rounded-full bg-[#229ED9] text-white text-[11px] font-black flex items-center justify-center shrink-0 mt-0.5">{step}</span>
-                    <p className="text-[12.5px] text-slate-600 leading-relaxed">{text} <span className="font-bold text-slate-800 bg-slate-100 px-1.5 py-0.5 rounded font-mono text-[11px]">{bold}</span></p>
-                  </div>
-                ))}
-              </div>
-              {/* Deep link button */}
-              <a
-                href="https://t.me/TaphoaMMO_bot"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center justify-center gap-2 w-full py-3 rounded-xl bg-[#229ED9] text-white text-[13px] font-bold hover:bg-[#1a8bc4] transition-colors shadow-sm"
-              >
-                <ExternalLink size={14} /> Mở Telegram ngay
-              </a>
+            <div className="flex items-center justify-end px-4 pt-4">
               <button
                 type="button"
-                onClick={() => {
-                  setStorefrontTelegramLinked(storefrontBuyerEmail, true);
-                  setTelegramLinkTick(t => t + 1);
-                  setShowTelegramModal(false);
-                }}
-                className="w-full py-2.5 rounded-xl border border-[#229ED9]/30 text-[#229ED9] text-[12px] font-bold hover:bg-[#229ED9]/5 transition-colors"
+                onClick={() => setShowTelegramModal(false)}
+                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center transition-colors"
+                aria-label="Đóng"
               >
-                Đánh dấu đã kết nối (demo)
+                <X size={16} className="text-slate-600" />
               </button>
+            </div>
+            <div className="px-5 pb-5 pt-1">
+              <StorefrontTelegramConnectPanel
+                connected={basicProfile.telegramLinked}
+                onMarkConnectedDemo={handleMarkTelegramLinked}
+              />
             </div>
           </div>
         </div>

@@ -58,7 +58,6 @@ export const STOREFRONT_TOP_UP_BANKS: StorefrontTopUpBank[] = [
 ];
 
 export const TOP_UP_MIN_VND = 10_000;
-export const TOP_UP_STEP_VND = 10_000;
 
 export function buildTopUpTransferContent(userCode: string): string {
   const code = userCode.trim().replace(/\s+/g, '').slice(0, 24) || 'KHACH';
