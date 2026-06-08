@@ -5331,7 +5331,20 @@ export const HomeView = ({
               </button>
               <a href="#" className="px-3.5 py-2 rounded-lg hover:bg-white/15 hover:text-emerald-100 transition-colors">{headerT.share}</a>
               <a href="#" className="px-3.5 py-2 rounded-lg hover:bg-white/15 hover:text-emerald-100 transition-colors flex items-center gap-1">{headerT.tools} <ChevronDown size={14} className="opacity-90" /></a>
-              <a href="#" className="px-3.5 py-2 rounded-lg hover:bg-white/15 hover:text-emerald-100 transition-colors">{headerT.faqs}</a>
+              <button
+                type="button"
+                onClick={() => {
+                  setHeaderDropdown(null);
+                  openStorefrontInfo('faq');
+                }}
+                className={`px-3.5 py-2 rounded-lg transition-colors ${
+                  storefrontPage === 'info' && storefrontInfoTab === 'faq'
+                    ? 'bg-white/20 text-white font-semibold'
+                    : 'hover:bg-white/15 hover:text-emerald-100'
+                }`}
+              >
+                {headerT.faqs}
+              </button>
               <button
                           type="button"
                           onClick={() => {
