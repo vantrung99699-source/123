@@ -40,6 +40,7 @@ interface AdminSidebarProps {
   complaintOrderCount?: number;
   pendingPreOrderCount?: number;
   pendingSellerRegistrationCount?: number;
+  pendingSharePostCount?: number;
 }
 
 interface MenuItem {
@@ -54,6 +55,7 @@ const SETTINGS_CHILDREN: { id: AdminView; label: string }[] = [
   { id: 'general-settings', label: 'Giới hạn & chính sách' },
   { id: 'notification-settings', label: 'Thông báo người dùng' },
   { id: 'seller-registrations', label: 'Đơn đăng ký bán hàng' },
+  { id: 'share-posts', label: 'Chia sẻ bài viết' },
 ];
 
 const MENU_ITEMS: MenuItem[] = [
@@ -131,11 +133,13 @@ function SettingsMenuGroup({
   onViewChange,
   collapsed,
   pendingSellerRegistrationCount = 0,
+  pendingSharePostCount = 0,
 }: {
   activeView: AdminView;
   onViewChange: (view: AdminView) => void;
   collapsed?: boolean;
   pendingSellerRegistrationCount?: number;
+  pendingSharePostCount?: number;
 }) {
   const isSettingsActive = SETTINGS_CHILDREN.some(c => c.id === activeView);
   const [open, setOpen] = useState(isSettingsActive);
@@ -188,7 +192,9 @@ function SettingsMenuGroup({
             const childBadge =
               child.id === 'seller-registrations' && pendingSellerRegistrationCount > 0
                 ? pendingSellerRegistrationCount
-                : 0;
+                : child.id === 'share-posts' && pendingSharePostCount > 0
+                  ? pendingSharePostCount
+                  : 0;
             return (
               <button
                 key={child.id}
@@ -227,6 +233,7 @@ export function AdminSidebar({
   complaintOrderCount = 0,
   pendingPreOrderCount = 0,
   pendingSellerRegistrationCount = 0,
+  pendingSharePostCount = 0,
 }: AdminSidebarProps) {
   const navigate = useNavigate();
   const [isCollapsed, setIsCollapsed] = useState(false);
@@ -313,6 +320,7 @@ export function AdminSidebar({
           onViewChange={onViewChange}
           collapsed={isCollapsed}
           pendingSellerRegistrationCount={pendingSellerRegistrationCount}
+          pendingSharePostCount={pendingSharePostCount}
         />
         {MENU_ITEMS.map((item) => {
           if (item.divider) {

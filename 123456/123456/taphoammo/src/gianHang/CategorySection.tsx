@@ -1,7 +1,15 @@
 /**
  * CategorySection, ProductRow, StatusBadge — dùng chung Admin Console & Admin Panel
  */
+
+function formatMatHangPriceDisplay(price?: string): string {
+  if (!price?.trim()) return '—';
+  const vnd = parsePriceToVndNumber(price);
+  if (vnd > 0) return formatVnd(vnd);
+  return price.replace(/đ'$/g, 'đ').replace(/'$/g, '');
+}
 import React, { useState } from 'react';
+import { formatVnd, parsePriceToVndNumber } from '../orderAmountDisplay';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   ChevronUp,
@@ -359,7 +367,9 @@ export function ProductRow({
         </div>
       </div>
     </td>
-    <td className="py-3 px-4 text-sm font-bold text-slate-900 font-display border-r border-slate-200">{product.price}</td>
+    <td className="py-3 px-4 text-sm font-bold text-slate-900 font-display border-r border-slate-200">
+      {formatMatHangPriceDisplay(product.price)}
+    </td>
     <td className="py-3 px-4 text-sm font-semibold text-slate-600 border-r border-slate-200">
       {hideWarehouse ? (
         <span className="text-violet-600 font-bold text-xs">Dịch vụ</span>

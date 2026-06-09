@@ -132,7 +132,7 @@ import {
 import { buildPartialRefundOfferPatch, computePartialRefundVnd } from './orderRefund';
 import { sendSellerResolveNotifyToBuyer } from './storefront/sellerResolveBuyerMessage';
 import { buildWarrantyOfferPatch } from './storefront/warrantyOffer';
-import { formatVnd } from './orderAmountDisplay';
+import { formatVnd, parsePriceToVndNumber } from './orderAmountDisplay';
 import { getComplaintEventDisplay } from './orderDateDisplay';
 import { 
   LayoutDashboard, 
@@ -2317,7 +2317,46 @@ function parseDiscountVndInput(raw: string): number {
 }
 
 function formatDiscountVndDisplay(vnd: number): string {
-  return `${vnd.toLocaleString('vi-VN')}đ'`;
+  return formatVnd(vnd);
+}
+
+function formatMatHangPriceFromInput(raw: string): string {
+  const vnd = parsePriceToVndNumber(raw);
+  return vnd > 0 ? formatVnd(vnd) : `${raw.trim()}đ`;
+}
+
+function normalizeMatHangPricesInCategories(cats: Category[]): Category[] {
+  const fixPrice = (price: string) => {
+    if (!price.includes("'")) return price;
+    const vnd = parsePriceToVndNumber(price);
+    return vnd > 0 ? formatVnd(vnd) : price.replace(/'/g, '');
+  };
+  const walk = (list: Category[]): { cats: Category[]; changed: boolean } => {
+    let changed = false;
+    const out = list.map((cat) => {
+      let next = cat;
+      if (cat.products?.some((p) => p.price?.includes("'"))) {
+        changed = true;
+        next = {
+          ...next,
+          products: cat.products.map((p) =>
+            p.price?.includes("'") ? { ...p, price: fixPrice(p.price) } : p
+          ),
+        };
+      }
+      if (cat.subCategories?.length) {
+        const sub = walk(cat.subCategories);
+        if (sub.changed) {
+          changed = true;
+          next = { ...next, subCategories: sub.cats };
+        }
+      }
+      return next;
+    });
+    return { cats: out, changed };
+  };
+  const { cats: next, changed } = walk(cats);
+  return changed ? next : cats;
 }
 
 function formatDiscountDateDisplay(iso: string): string {
@@ -2780,7 +2819,7 @@ const DiscountCodesView = ({ categories }: { categories: Category[] }) => {
                             className="w-full pl-4 pr-8 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-700 placeholder:font-normal placeholder:text-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/8 transition-all outline-none"
                           />
                           <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-bold text-slate-400">
-                            đ'
+                            đ
                           </span>
                         </div>
                         <p className="text-[11px] text-slate-500 leading-relaxed">
@@ -2801,7 +2840,7 @@ const DiscountCodesView = ({ categories }: { categories: Category[] }) => {
                           placeholder="VD: 50000"
                           className="w-full pl-9 pr-8 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-700 placeholder:font-normal placeholder:text-slate-400 focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-500/8 transition-all outline-none"
                         />
-                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-bold text-slate-400">đ'</span>
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-bold text-slate-400">đ</span>
                       </div>
                     </div>
                   )}
@@ -4315,6 +4354,10 @@ export default function App() {
     writeResellerRequestsToStorage(resellerRequests);
   }, [resellerRequests]);
 
+  useEffect(() => {
+    setCategories((prev) => normalizeMatHangPricesInCategories(prev));
+  }, []);
+
   const sellerIdentityKeys = useMemo(() => {
     const keys = new Set<string>();
     const add = (s: string | undefined) => {
@@ -4651,7 +4694,7 @@ export default function App() {
     const newProduct: Product = {
       id: `${Date.now()}`,
       name: newProductName,
-      price: `${newProductPrice}đ'`,
+      price: formatMatHangPriceFromInput(newProductPrice),
       stock: 0,
       sold: 0,
       fee: '10%',
@@ -4978,7 +5021,9 @@ export default function App() {
   const handleEditProduct = (product: Product) => {
     setEditingProduct(product);
     setNewProductName(product.name);
-    setNewProductPrice(product.price.replace('đ', '').replace(/,/g, ''));
+    setNewProductPrice(
+      product.price.replace(/đ'|đ/gi, '').replace(/[^\d]/g, '')
+    );
     setIsEditProductModalOpen(true);
   };
 
@@ -4995,7 +5040,7 @@ export default function App() {
                 ...cat,
                 products: cat.products.map(p => 
                   p.id === editingProduct.id 
-                    ? { ...p, name: newProductName, price: `${newProductPrice}đ'` } 
+                    ? { ...p, name: newProductName, price: formatMatHangPriceFromInput(newProductPrice) } 
                     : p
                 )
               };
@@ -5755,7 +5800,7 @@ export default function App() {
                 <div className="text-right leading-tight">
                   <div className="text-[10px] font-semibold text-amber-800/80 uppercase tracking-wide">Số dư</div>
                   <div className="text-sm font-bold text-amber-900 tabular-nums">
-                    {storefrontWalletVnd.toLocaleString('vi-VN')}đ'
+                    {formatVnd(storefrontWalletVnd)}
                   </div>
                 </div>
               </div>
@@ -5806,7 +5851,7 @@ export default function App() {
                         <div className="mx-4 mb-2 px-3 py-2.5 rounded-xl bg-amber-50 border border-amber-100 flex items-center justify-between gap-2">
                           <span className="text-[11px] font-semibold text-amber-800">Số dư ví</span>
                           <span className="text-sm font-bold text-amber-900 tabular-nums">
-                            {storefrontWalletVnd.toLocaleString('vi-VN')}đ'
+                            {formatVnd(storefrontWalletVnd)}
                           </span>
                         </div>
                       )}

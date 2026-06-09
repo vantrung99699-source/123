@@ -1,7 +1,7 @@
 import type { Order } from './ordersTypes';
 
 export function parsePriceToVndNumber(priceStr: string): number {
-  let cleaned = priceStr.trim().replace(/\s/g, '').replace(/đ/gi, '');
+  let cleaned = priceStr.trim().replace(/\s/g, '').replace(/đ/gi, '').replace(/'/g, '');
   if (/^\d{1,3}(\.\d{3})+$/.test(cleaned)) {
     cleaned = cleaned.replace(/\./g, '');
   } else if (/^\d{1,3}(,\d{3})+$/.test(cleaned)) {

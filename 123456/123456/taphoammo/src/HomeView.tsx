@@ -60,6 +60,12 @@ import {
 } from './auth/storefrontWalletByRole';
 import { StorefrontAuthDropdown, type StorefrontLoginPayload } from './components/StorefrontAuthDropdown';
 import { StorefrontBasicInfoPage } from './components/StorefrontBasicInfoPage';
+import { StorefrontFavoriteHeartButton } from './components/StorefrontFavoriteHeartButton';
+import {
+  listStorefrontFavoriteKeys,
+  productToFavoriteKey,
+  toggleStorefrontFavorite,
+} from './storefront/storefrontFavorites';
 import {
   buildStorefrontBasicProfile,
   setStorefrontTelegramLinked,
@@ -89,6 +95,15 @@ import {
 } from './auth/storefrontLoginSessions';
 import { StorefrontGuestHeader } from './components/StorefrontGuestHeader';
 import { StorefrontHeaderNavCategoryDropdown } from './components/StorefrontHeaderNavCategoryDropdown';
+import { StorefrontHeaderNavToolsDropdown } from './components/StorefrontHeaderNavToolsDropdown';
+import { StorefrontToolPage } from './components/StorefrontToolsPage';
+import {
+  isStorefrontToolPage,
+  storefrontPageToToolId,
+  toolIdToStorefrontPage,
+  type StorefrontToolId,
+  type StorefrontToolPageId,
+} from './storefront/storefrontTools';
 import { StorefrontTelegramConnectPanel } from './components/StorefrontTelegramConnectPanel';
 import { StorefrontTelegramConnectSuccessModal } from './components/StorefrontTelegramConnectSuccessModal';
 import { StorefrontGuestLanding } from './components/StorefrontGuestLanding';
@@ -98,6 +113,7 @@ import {
   type StorefrontInfoTabId,
 } from './components/StorefrontInfoPage';
 import { StorefrontSupportPage } from './components/StorefrontSupportPage';
+import { StorefrontSharePage } from './components/StorefrontSharePage';
 import { buildSupportThreadIdForBuyerEmail } from './storefront/sellerRegistrationApprovalNotify';
 import { StorefrontTopBar } from './components/StorefrontTopBar';
 import {
@@ -785,6 +801,28 @@ function parsePriceToVndNumber(priceStr: string): number {
   return parseOne(segments[0]);
 }
 
+function parseCatalogFilterPriceInput(raw: string): number | null {
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  const n = parsePriceToVndNumber(trimmed);
+  return n > 0 ? n : null;
+}
+
+function getStorefrontProductPriceBounds(product: Product): { min: number; max: number } {
+  const variants = product.variantPrices?.filter((v) => v > 0);
+  if (variants && variants.length > 0) {
+    return { min: Math.min(...variants), max: Math.max(...variants) };
+  }
+  const segments = product.price.split(/\s*-\s*/);
+  if (segments.length >= 2) {
+    const a = parsePriceToVndNumber(segments[0]);
+    const b = parsePriceToVndNumber(segments[1]);
+    if (a > 0 && b > 0) return { min: Math.min(a, b), max: Math.max(a, b) };
+  }
+  const single = parsePriceToVndNumber(product.price);
+  return { min: single, max: single };
+}
+
 /** Tránh cộng ví trùng khi React Strict Mode chạy effect hai lần (hoàn tiền đơn Thất bại đã checkout). */
 const storefrontRefundRecordedOrderIds = new Set<string>();
 const storefrontSellerPayoutRecordedOrderIds = new Set<string>();
@@ -885,6 +923,42 @@ function flattenStorefrontAdminGianHang(
   };
   walk(nodes);
   return out;
+}
+
+function normStorefrontSellerKey(s: string): string {
+  return s.trim().toLowerCase();
+}
+
+function buildStorefrontSellerMatchKeys(
+  username: string,
+  displayName?: string,
+  email?: string
+): Set<string> {
+  return new Set(
+    [username, displayName, email].filter(Boolean).map((v) => normStorefrontSellerKey(v!))
+  );
+}
+
+function collectGianHangIdsForSellerKeys(
+  nodes: StorefrontAdminGianHangTree[] | undefined,
+  keys: Set<string>
+): Set<string> {
+  const ids = new Set<string>();
+  for (const leaf of flattenStorefrontAdminGianHang(nodes)) {
+    const sk = normStorefrontSellerKey(leaf.sellerDisplayName || leaf.createdByName || '');
+    if (sk && keys.has(sk)) ids.add(leaf.id);
+  }
+  return ids;
+}
+
+function storefrontProductMatchesSeller(
+  product: Product,
+  keys: Set<string>,
+  gianHangIds: Set<string>
+): boolean {
+  if (product.adminGianHangId && gianHangIds.has(product.adminGianHangId)) return true;
+  const sellerKey = normStorefrontSellerKey(product.seller || '');
+  return sellerKey.length > 0 && keys.has(sellerKey);
 }
 
 function findStorefrontAdminGianHangById(
@@ -1222,6 +1296,8 @@ const ProductDetailView = ({
   resellerReferrer = null,
   storefrontAccountMode = 'buyer',
   onRequireLogin,
+  isFavorited = false,
+  onToggleFavorite,
 }: {
   product: Product;
   buyerName: string;
@@ -1263,6 +1339,8 @@ const ProductDetailView = ({
   storefrontAccountMode?: StorefrontAccountMode;
   /** Khách chưa đăng nhập — mở form đăng ký / đăng nhập thay vì thanh toán. */
   onRequireLogin?: () => void;
+  isFavorited?: boolean;
+  onToggleFavorite?: () => void;
 }) => {
   const [activeTab, setActiveTab] = useState<'description' | 'reviews' | 'api'>('description');
   /** Chuỗi để cho phép xóa hết rồi nhập số mới (không bị kẹt ở 1 như input number ép ngay) */
@@ -1271,7 +1349,6 @@ const ProductDetailView = ({
   const [discountCode, setDiscountCode] = useState('');
   const [appliedDiscount, setAppliedDiscount] = useState<DiscountCodeRow | null>(null);
   const [discountCodeHint, setDiscountCodeHint] = useState<string | null>(null);
-  const [isFavorited, setIsFavorited] = useState(false);
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [isResellerOpen, setIsResellerOpen] = useState(false);
   const [isPreOrderOpen, setIsPreOrderOpen] = useState(false);
@@ -1904,14 +1981,14 @@ const ProductDetailView = ({
                 </span>
               </div>
               {/* Favorite button */}
-              <button
-                onClick={() => setIsFavorited(!isFavorited)}
-                className="absolute top-3 right-3 z-10 w-9 h-9 rounded-full bg-white/90 backdrop-blur-sm flex items-center justify-center shadow-md hover:scale-110 transition-transform"
-              >
-                <svg viewBox="0 0 24 24" width="18" height="18" fill={isFavorited ? '#ef4444' : 'none'} stroke={isFavorited ? '#ef4444' : '#9ca3af'} strokeWidth="2">
-                  <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>
-                </svg>
-              </button>
+              <StorefrontFavoriteHeartButton
+                active={isFavorited}
+                onToggle={(e) => {
+                  e.stopPropagation();
+                  onToggleFavorite?.();
+                }}
+                className="absolute top-3 right-3 z-10"
+              />
               <img
                 src={product.sellerAvatar}
                 alt={product.name}
@@ -3664,10 +3741,22 @@ export const HomeView = ({
 
   type StorefrontLine = 'Bán sản phẩm' | 'Dịch vụ';
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
-  const [selectedProductTypes, setSelectedProductTypes] = useState<string[]>([]);
+  const [draftCatalogProductTypes, setDraftCatalogProductTypes] = useState<string[]>([]);
+  const [appliedCatalogProductTypes, setAppliedCatalogProductTypes] = useState<string[]>([]);
+  const [draftCatalogPriceMin, setDraftCatalogPriceMin] = useState('');
+  const [draftCatalogPriceMax, setDraftCatalogPriceMax] = useState('');
+  const [appliedCatalogPriceMin, setAppliedCatalogPriceMin] = useState<number | null>(null);
+  const [appliedCatalogPriceMax, setAppliedCatalogPriceMax] = useState<number | null>(null);
   const [activeStorefrontLine, setActiveStorefrontLine] = useState<StorefrontLine>('Bán sản phẩm');
   const [activeSort, setActiveSort] = useState('popular');
   const [catalogSearchQuery, setCatalogSearchQuery] = useState('');
+  const [catalogSellerFilter, setCatalogSellerFilter] = useState<{
+    username: string;
+    displayName: string;
+    email?: string;
+  } | null>(null);
+  const [catalogFavoritesOnly, setCatalogFavoritesOnly] = useState(false);
+  const [favoritesRevision, setFavoritesRevision] = useState(0);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [storefrontPage, setStorefrontPage] = useState<
     | 'shop'
@@ -3681,6 +3770,8 @@ export const HomeView = ({
     | 'messages'
     | 'info'
     | 'support'
+    | 'share'
+    | StorefrontToolPageId
   >('shop');
   const [storefrontInfoTab, setStorefrontInfoTab] = useState<StorefrontInfoTabId>('about');
   const [guestInfoTab, setGuestInfoTab] = useState<StorefrontInfoTabId | null>(null);
@@ -3959,21 +4050,52 @@ export const HomeView = ({
 
   // Password form state
   const [passwordForm, setPasswordForm] = useState({ current: '', next: '', confirm: '' });
-  const [headerDropdown, setHeaderDropdown] = useState<null | 'product' | 'service'>(null);
+  const [headerDropdown, setHeaderDropdown] = useState<null | 'product' | 'service' | 'tools'>(null);
   /** Mở trang gian hàng riêng (không cuộn trong trang hub). Thoát chi tiết đơn / sản phẩm để header luôn điều hướng được. */
   const openCatalogPage = useCallback(() => {
     setStorefrontOrderDetailId(null);
     setSelectedProduct(null);
     setPublicProfileSeller(null);
+    setCatalogSellerFilter(null);
+    setCatalogFavoritesOnly(false);
     setStorefrontPage('shop-catalog');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, []);
+
+  const openFavoriteShopsPage = useCallback(() => {
+    setStorefrontOrderDetailId(null);
+    setSelectedProduct(null);
+    setPublicProfileSeller(null);
+    setCatalogSellerFilter(null);
+    setCatalogFavoritesOnly(true);
+    setStorefrontPage('shop-catalog');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, []);
+
+  const openSellerShopCatalog = useCallback(
+    (params: { username: string; displayName?: string; email?: string }) => {
+      const username = params.username.trim();
+      if (!username) return;
+      setStorefrontOrderDetailId(null);
+      setSelectedProduct(null);
+      setCatalogSellerFilter({
+        username,
+        displayName: (params.displayName || username).trim() || username,
+        email: params.email?.trim() || undefined,
+      });
+      setCatalogFavoritesOnly(false);
+      setStorefrontPage('shop-catalog');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    },
+    []
+  );
 
   const openSellerPublicProfile = useCallback((sellerName: string) => {
     const name = sellerName.trim();
     if (!name) return;
     setSelectedProduct(null);
     setStorefrontOrderDetailId(null);
+    setCatalogSellerFilter(null);
     setPublicProfileSeller(name);
     setStorefrontPage('public-profile');
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -4013,6 +4135,28 @@ export const HomeView = ({
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, []);
 
+  const openStorefrontSharePage = useCallback(() => {
+    setGuestInfoTab(null);
+    setSelectedProduct(null);
+    setStorefrontOrderDetailId(null);
+    setPublicProfileSeller(null);
+    setHeaderDropdown(null);
+    setUserMenuOpen(false);
+    setStorefrontPage('share');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, []);
+
+  const openStorefrontToolsPage = useCallback((toolId: StorefrontToolId = 'check-live-fb') => {
+    setGuestInfoTab(null);
+    setSelectedProduct(null);
+    setStorefrontOrderDetailId(null);
+    setPublicProfileSeller(null);
+    setHeaderDropdown(null);
+    setUserMenuOpen(false);
+    setStorefrontPage(toolIdToStorefrontPage(toolId));
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, []);
+
   const openStorefrontInfo = useCallback(
     (tab: StorefrontInfoTabId) => {
       if (storefrontLoggedIn) {
@@ -4036,10 +4180,30 @@ export const HomeView = ({
     setGuestInfoTab(null);
     setSelectedProduct(null);
     setStorefrontOrderDetailId(null);
+    setCatalogSellerFilter(null);
+    setCatalogFavoritesOnly(false);
     setActiveStorefrontLine(line);
     setStorefrontPage('shop-catalog');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, []);
+
+  const favoriteProductKeys = useMemo(
+    () => new Set(listStorefrontFavoriteKeys(storefrontBuyerEmail)),
+    [storefrontBuyerEmail, favoritesRevision]
+  );
+
+  const isProductFavorited = useCallback(
+    (product: Product) => favoriteProductKeys.has(productToFavoriteKey(product)),
+    [favoriteProductKeys]
+  );
+
+  const toggleFavoriteProduct = useCallback(
+    (product: Product) => {
+      toggleStorefrontFavorite(storefrontBuyerEmail, productToFavoriteKey(product));
+      setFavoritesRevision((r) => r + 1);
+    },
+    [storefrontBuyerEmail]
+  );
 
   const openGuestCatalogWithCategory = useCallback(
     (categoryName: string, line: StorefrontLine) => {
@@ -4079,7 +4243,12 @@ export const HomeView = ({
       } else {
         setSelectedCategories([]);
       }
-      setSelectedProductTypes(productTypes);
+      setDraftCatalogProductTypes(productTypes);
+      setAppliedCatalogProductTypes(productTypes);
+      setDraftCatalogPriceMin('');
+      setDraftCatalogPriceMax('');
+      setAppliedCatalogPriceMin(null);
+      setAppliedCatalogPriceMax(null);
       openGuestCatalog(line);
     },
     [openGuestCatalog, storefrontProductTypesByCategory, storefrontServiceTypesByCategory]
@@ -4624,8 +4793,21 @@ export const HomeView = ({
   useEffect(() => {
     // Khi Admin thêm/xóa/sửa loại sản phẩm, hoặc người dùng đổi category,
     // lọc các type đã tick để tránh checkbox "kẹt" ở giá trị không còn tồn tại.
-    setSelectedProductTypes(prev => prev.filter(t => sidebarTypeOptions.includes(t)));
+    const prune = (prev: string[]) => prev.filter((t) => sidebarTypeOptions.includes(t));
+    setDraftCatalogProductTypes(prune);
+    setAppliedCatalogProductTypes(prune);
   }, [sidebarTypeOptions]);
+
+  const applyCatalogSidebarFilters = useCallback(() => {
+    setAppliedCatalogProductTypes([...draftCatalogProductTypes]);
+    let min = parseCatalogFilterPriceInput(draftCatalogPriceMin);
+    let max = parseCatalogFilterPriceInput(draftCatalogPriceMax);
+    if (min != null && max != null && min > max) {
+      [min, max] = [max, min];
+    }
+    setAppliedCatalogPriceMin(min);
+    setAppliedCatalogPriceMax(max);
+  }, [draftCatalogProductTypes, draftCatalogPriceMin, draftCatalogPriceMax]);
 
   const mainLineTypeSet = useMemo(() => {
     const typeMap = activeStorefrontLine === 'Bán sản phẩm' ? storefrontProductTypesByCategory : storefrontServiceTypesByCategory;
@@ -4659,10 +4841,15 @@ export const HomeView = ({
   const selectedMainLineTypeSet = useMemo(() => {
     // Nếu user đã tick type thuộc line hiện tại -> áp dụng lọc theo type.
     // Nếu tick nhầm line (do trước đó user chọn category khác), bỏ qua type để không làm rỗng danh sách.
-    const normalized = selectedProductTypes.map(normalizeTypeLabel);
+    const normalized = appliedCatalogProductTypes.map(normalizeTypeLabel);
     const matched = normalized.filter(l => mainLineTypeSet.has(l));
     return new Set(matched);
-  }, [selectedProductTypes, normalizeTypeLabel, mainLineTypeSet]);
+  }, [appliedCatalogProductTypes, normalizeTypeLabel, mainLineTypeSet]);
+
+  const catalogSidebarFiltersActive =
+    appliedCatalogProductTypes.length > 0 ||
+    appliedCatalogPriceMin != null ||
+    appliedCatalogPriceMax != null;
 
   useEffect(() => {
     const allowed = new Set([...storefrontDanhMucBanSanPham, ...storefrontDanhMucDichVu]);
@@ -4748,6 +4935,12 @@ export const HomeView = ({
       if (!mainLineTypeSet.has(normalized)) return false;
       if (selectedCategories.length > 0 && !mainCategoryTypeSet.has(normalized)) return false;
       if (selectedMainLineTypeSet.size > 0 && !selectedMainLineTypeSet.has(normalized)) return false;
+      if (appliedCatalogPriceMin != null || appliedCatalogPriceMax != null) {
+        const { min, max } = getStorefrontProductPriceBounds(p);
+        if (min <= 0 && max <= 0) return false;
+        if (appliedCatalogPriceMin != null && max < appliedCatalogPriceMin) return false;
+        if (appliedCatalogPriceMax != null && min > appliedCatalogPriceMax) return false;
+      }
       return true;
     });
   }, [
@@ -4757,6 +4950,8 @@ export const HomeView = ({
     selectedMainLineTypeSet,
     selectedCategories.length,
     mainCategoryTypeSet,
+    appliedCatalogPriceMin,
+    appliedCatalogPriceMax,
   ]);
 
   const sortedStorefrontProducts = useMemo(() => {
@@ -4800,9 +4995,47 @@ export const HomeView = ({
 
   const catalogSearchTrim = catalogSearchQuery.trim().toLowerCase();
 
+  const catalogSellerMatchContext = useMemo(() => {
+    if (!catalogSellerFilter) return null;
+    const keys = buildStorefrontSellerMatchKeys(
+      catalogSellerFilter.username,
+      catalogSellerFilter.displayName,
+      catalogSellerFilter.email
+    );
+    const gianHangIds = collectGianHangIdsForSellerKeys(storefrontAdminGianHangCategories, keys);
+    return {
+      keys,
+      gianHangIds,
+      label: catalogSellerFilter.displayName || catalogSellerFilter.username,
+      username: catalogSellerFilter.username,
+    };
+  }, [catalogSellerFilter, storefrontAdminGianHangCategories]);
+
+  const sellerScopedStorefrontProducts = useMemo(() => {
+    let list = sortedStorefrontProducts;
+    if (catalogSellerMatchContext) {
+      list = list.filter((p) =>
+        storefrontProductMatchesSeller(
+          p,
+          catalogSellerMatchContext.keys,
+          catalogSellerMatchContext.gianHangIds
+        )
+      );
+    }
+    if (catalogFavoritesOnly) {
+      list = list.filter((p) => favoriteProductKeys.has(productToFavoriteKey(p)));
+    }
+    return list;
+  }, [
+    sortedStorefrontProducts,
+    catalogSellerMatchContext,
+    catalogFavoritesOnly,
+    favoriteProductKeys,
+  ]);
+
   const searchedStorefrontProducts = useMemo(() => {
-    if (!catalogSearchTrim) return sortedStorefrontProducts;
-    return sortedStorefrontProducts.filter((p) => {
+    if (!catalogSearchTrim) return sellerScopedStorefrontProducts;
+    return sellerScopedStorefrontProducts.filter((p) => {
       const haystack = [
         p.name,
         p.seller,
@@ -4815,11 +5048,11 @@ export const HomeView = ({
         .toLowerCase();
       return haystack.includes(catalogSearchTrim);
     });
-  }, [sortedStorefrontProducts, catalogSearchTrim]);
+  }, [sellerScopedStorefrontProducts, catalogSearchTrim]);
 
   useEffect(() => {
     setStorefrontVisibleCount(8);
-  }, [activeSort, catalogSearchTrim]);
+  }, [activeSort, catalogSearchTrim, catalogSellerFilter, catalogFavoritesOnly, catalogSidebarFiltersActive]);
 
   const displayedStorefrontProducts = useMemo(
     () => searchedStorefrontProducts.slice(0, storefrontVisibleCount),
@@ -5329,8 +5562,47 @@ export const HomeView = ({
               >
                 {headerT.support}
               </button>
-              <a href="#" className="px-3.5 py-2 rounded-lg hover:bg-white/15 hover:text-emerald-100 transition-colors">{headerT.share}</a>
-              <a href="#" className="px-3.5 py-2 rounded-lg hover:bg-white/15 hover:text-emerald-100 transition-colors flex items-center gap-1">{headerT.tools} <ChevronDown size={14} className="opacity-90" /></a>
+              <button
+                type="button"
+                onClick={openStorefrontSharePage}
+                className={`px-3.5 py-2 rounded-lg transition-colors ${
+                  storefrontPage === 'share'
+                    ? 'bg-white/20 text-white font-semibold'
+                    : 'hover:bg-white/15 hover:text-emerald-100'
+                }`}
+              >
+                {headerT.share}
+              </button>
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setStorefrontOrderDetailId(null);
+                    setSelectedProduct(null);
+                    setHeaderDropdown(v => (v === 'tools' ? null : 'tools'));
+                  }}
+                  className={`px-3.5 py-2 rounded-lg transition-all flex items-center gap-1 ${
+                    headerDropdown === 'tools' || isStorefrontToolPage(storefrontPage)
+                      ? 'bg-white/20 text-white shadow-sm ring-1 ring-white/25'
+                      : 'hover:bg-white/15 hover:text-emerald-100'
+                  }`}
+                  aria-expanded={headerDropdown === 'tools'}
+                  aria-haspopup="menu"
+                >
+                  {headerT.tools}{' '}
+                  <ChevronDown
+                    size={14}
+                    className={`opacity-90 transition-transform duration-200 ${headerDropdown === 'tools' ? 'rotate-180' : ''}`}
+                  />
+                </button>
+                {headerDropdown === 'tools' && (
+                  <StorefrontHeaderNavToolsDropdown
+                    menuTitle={headerT.tools}
+                    activeToolId={storefrontPageToToolId(storefrontPage)}
+                    onSelectTool={toolId => openStorefrontToolsPage(toolId)}
+                  />
+                )}
+              </div>
               <button
                 type="button"
                 onClick={() => {
@@ -5427,40 +5699,46 @@ export const HomeView = ({
                     {userNotifications.length === 0 ? (
                       <p className="px-4 py-8 text-center text-sm text-slate-500">Chưa có thông báo.</p>
                     ) : (
-                      userNotifications.map(item => (
-                        <button
-                          key={item.id}
-                          type="button"
-                          onClick={() => {
-                            if (!item.read) {
-                              markStorefrontUserNotificationRead(storefrontBuyerEmail, item.id);
-                              bumpUserNotifRevision();
-                            }
-                            if (
-                              item.kind === 'seller_registration_approved' ||
-                              item.kind === 'seller_registration_rejected'
-                            ) {
-                              setUserNotifPanelOpen(false);
-                              openStorefrontSupportChat();
-                            }
-                          }}
-                          className={`w-full text-left px-4 py-3 hover:bg-slate-50 transition-colors ${
-                            item.read ? 'opacity-75' : 'bg-emerald-50/40'
-                          }`}
-                        >
-                          <p className="text-sm font-bold text-slate-800">{item.title}</p>
-                          <p className="text-[10px] text-slate-400 mt-1 tabular-nums">
-                            {new Date(item.createdAtIso).toLocaleString('vi-VN', {
-                              day: '2-digit',
-                              month: '2-digit',
-                              year: 'numeric',
-                              hour: '2-digit',
-                              minute: '2-digit',
-                            })}
-                          </p>
-                          <p className="text-xs text-slate-600 mt-1 leading-relaxed">{item.content}</p>
-                        </button>
-                      ))
+                      userNotifications.map(item => {
+                        const notifiedAt = new Date(item.createdAtIso);
+                        const notifiedAtLabel = `${notifiedAt.toLocaleTimeString('vi-VN', {
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })} ${notifiedAt.toLocaleDateString('vi-VN', {
+                          day: '2-digit',
+                          month: '2-digit',
+                          year: 'numeric',
+                        })}`;
+
+                        return (
+                          <button
+                            key={item.id}
+                            type="button"
+                            onClick={() => {
+                              if (!item.read) {
+                                markStorefrontUserNotificationRead(storefrontBuyerEmail, item.id);
+                                bumpUserNotifRevision();
+                              }
+                              if (
+                                item.kind === 'seller_registration_approved' ||
+                                item.kind === 'seller_registration_rejected'
+                              ) {
+                                setUserNotifPanelOpen(false);
+                                openStorefrontSupportChat();
+                              }
+                            }}
+                            className={`w-full text-left px-4 py-3 hover:bg-slate-50 transition-colors ${
+                              item.read ? 'opacity-75' : 'bg-emerald-50/40'
+                            }`}
+                          >
+                            <p className="text-sm font-bold text-slate-800">{item.title}</p>
+                            <p className="text-xs text-slate-600 mt-1.5 leading-relaxed">{item.content}</p>
+                            <p className="text-[10px] text-slate-400 mt-2 text-right tabular-nums">
+                              {notifiedAtLabel}
+                            </p>
+                          </button>
+                        );
+                      })
                     )}
                   </div>
                 </div>
@@ -5637,7 +5915,14 @@ export const HomeView = ({
                         },
                             ] as const)
                           : []),
-                        { label: 'Gian hàng yêu thích' },
+                        {
+                          label: 'Gian hàng yêu thích',
+                          onSelect: () => {
+                            setSelectedProduct(null);
+                            setStorefrontOrderDetailId(null);
+                            openFavoriteShopsPage();
+                          },
+                        },
                         ...(isStorefrontBuyerMode
                           ? ([
                               {
@@ -5746,6 +6031,10 @@ export const HomeView = ({
           onSelectServiceCategory={name => openGuestCatalogWithCategory(name, 'Dịch vụ')}
           onOpenFaqs={() => openStorefrontInfo('faq')}
           onOpenSupport={openStorefrontSupportPage}
+          onOpenShare={openStorefrontSharePage}
+          onOpenTool={openStorefrontToolsPage}
+          activeToolId={storefrontPageToToolId(storefrontPage)}
+          sharePageActive={storefrontPage === 'share'}
           authSlot={() => (
             <StorefrontAuthDropdown
               onLoginSuccess={onStorefrontLoginSuccess}
@@ -5781,7 +6070,9 @@ export const HomeView = ({
       storefrontPage !== 'reseller-hub' &&
       storefrontPage !== 'top-up' &&
       storefrontPage !== 'messages' &&
-      storefrontPage !== 'support' ? (
+      storefrontPage !== 'support' &&
+      storefrontPage !== 'share' &&
+      !isStorefrontToolPage(storefrontPage) ? (
         detailOrder.order_type === 'service' ? (
           <ServiceOrderDetailView
             order={detailOrder}
@@ -5875,6 +6166,8 @@ export const HomeView = ({
               )
             );
           }}
+          isFavorited={isProductFavorited(selectedProduct)}
+          onToggleFavorite={() => toggleFavoriteProduct(selectedProduct)}
         />
       ) : storefrontPage === 'info' ? (
         <>
@@ -5897,6 +6190,41 @@ export const HomeView = ({
             onRequireLogin={openStorefrontRegister}
             onOpenFaqs={() => openStorefrontInfo('faq')}
           />
+          <StorefrontLandingFooter
+            onChatSupport={storefrontLoggedIn ? openStorefrontSupportChat : openStorefrontRegister}
+            onJoinSeller={
+              storefrontLoggedIn
+                ? () => setShowSellerRegistrationModal(true)
+                : openStorefrontRegister
+            }
+            onOpenInfo={openStorefrontInfo}
+          />
+        </>
+      ) : storefrontPage === 'share' ? (
+        <>
+          <StorefrontSharePage
+            isLoggedIn={storefrontLoggedIn}
+            userEmail={storefrontBuyerEmail}
+            userLogin={getSessionLoginUsername() || storefrontBuyerName}
+            userDisplayName={storefrontHeaderDisplayName}
+            userRole={
+              isStorefrontSellerMode ? 'seller' : isStorefrontResellerMode ? 'reseller' : 'buyer'
+            }
+            onRequireLogin={openStorefrontRegister}
+          />
+          <StorefrontLandingFooter
+            onChatSupport={storefrontLoggedIn ? openStorefrontSupportChat : openStorefrontRegister}
+            onJoinSeller={
+              storefrontLoggedIn
+                ? () => setShowSellerRegistrationModal(true)
+                : openStorefrontRegister
+            }
+            onOpenInfo={openStorefrontInfo}
+          />
+        </>
+      ) : isStorefrontToolPage(storefrontPage) ? (
+        <>
+          <StorefrontToolPage pageId={storefrontPage} />
           <StorefrontLandingFooter
             onChatSupport={storefrontLoggedIn ? openStorefrontSupportChat : openStorefrontRegister}
             onJoinSeller={
@@ -6102,7 +6430,12 @@ export const HomeView = ({
           <StorefrontBasicInfoPage
             profile={publicSellerProfile}
             isOwnProfile={false}
-            onOpenStores={openCatalogPage}
+            onOpenStores={() =>
+              openSellerShopCatalog({
+                username: publicProfileSeller,
+                displayName: publicSellerProfile.displayName,
+              })
+            }
             onOpenMessages={() => {
               setMessagesProductSeed({ sellerName: publicProfileSeller });
               openMessagesPage();
@@ -6132,11 +6465,13 @@ export const HomeView = ({
               <StorefrontBasicInfoPage
                 profile={basicProfile}
                 isOwnProfile
-                onOpenStores={() => {
-                  setSelectedProduct(null);
-                  setStorefrontPage('shop-catalog');
-                  window.scrollTo({ top: 0, behavior: 'smooth' });
-                }}
+                onOpenStores={() =>
+                  openSellerShopCatalog({
+                    username: basicProfile.username,
+                    displayName: basicProfile.displayName,
+                    email: basicProfile.email,
+                  })
+                }
                 onOpenMessages={() => openMessagesPage()}
               />
             </div>
@@ -6955,6 +7290,62 @@ export const HomeView = ({
       ) : storefrontPage === 'shop-catalog' ? (
       <>
       <div className="max-w-[2000px] mx-auto px-6 py-6 pb-16">
+      {catalogFavoritesOnly ? (
+        <div className="max-w-[1700px] mx-auto mb-5 rounded-2xl border border-rose-100 bg-gradient-to-r from-white via-rose-50/40 to-pink-50/30 px-5 py-4 shadow-sm shadow-rose-500/10">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div className="min-w-0">
+              <button
+                type="button"
+                onClick={() => {
+                  setCatalogFavoritesOnly(false);
+                  openCatalogPage();
+                }}
+                className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-slate-600 hover:text-rose-700 transition-colors mb-2"
+              >
+                <ChevronLeft size={16} />
+                Xem tất cả gian hàng
+              </button>
+              <h2 className="text-lg font-black text-slate-900">Gian hàng yêu thích</h2>
+              <p className="text-[13px] text-slate-600 mt-0.5">
+                {searchedStorefrontProducts.length > 0 ? (
+                  <>
+                    <span className="font-bold tabular-nums text-rose-600">
+                      {searchedStorefrontProducts.length.toLocaleString('vi-VN')}
+                    </span>{' '}
+                    gian hàng đã lưu
+                  </>
+                ) : (
+                  'Chưa có gian hàng yêu thích — bấm tim trên thẻ sản phẩm để lưu.'
+                )}
+              </p>
+            </div>
+          </div>
+        </div>
+      ) : catalogSellerMatchContext ? (
+        <div className="max-w-[1700px] mx-auto mb-5 rounded-2xl border border-emerald-100 bg-gradient-to-r from-white via-emerald-50/50 to-teal-50/40 px-5 py-4 shadow-sm shadow-emerald-500/10">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div className="min-w-0">
+              <h2 className="text-lg font-black text-slate-900 truncate">
+                Gian hàng của @{catalogSellerMatchContext.username}
+              </h2>
+              <p className="text-[13px] text-slate-600 mt-0.5">
+                <span className="font-bold tabular-nums text-emerald-600">
+                  {searchedStorefrontProducts.length.toLocaleString('vi-VN')}
+                </span>{' '}
+                gian hàng đang hiển thị
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => openSellerPublicProfile(catalogSellerMatchContext.username)}
+              className="inline-flex items-center justify-center gap-2 shrink-0 px-4 py-2.5 rounded-xl bg-white border-2 border-emerald-200 text-emerald-800 text-[13px] font-bold hover:bg-emerald-50 transition-colors"
+            >
+              <User size={16} />
+              Xem hồ sơ shop
+            </button>
+          </div>
+        </div>
+      ) : null}
       <div id="storefront-catalog-root" className="max-w-[1700px] mx-auto px-0 pb-12 flex gap-6 scroll-mt-6">
 
         {/* Left Sidebar */}
@@ -6973,7 +7364,7 @@ export const HomeView = ({
                     {searchedStorefrontProducts.length.toLocaleString('vi-VN')}
                   </span>{' '}
                   gian hàng
-                  {(selectedProductTypes.length > 0 || catalogSearchTrim) && (
+                  {(catalogSidebarFiltersActive || catalogSearchTrim) && (
                     <span className="text-gray-400"> · đã lọc</span>
                   )}
                 </p>
@@ -6990,15 +7381,15 @@ export const HomeView = ({
                         <div className="flex items-center gap-2.5">
                           <input
                             type="checkbox"
-                            checked={selectedProductTypes.includes(type)}
-                            onChange={() => setSelectedProductTypes(prev =>
+                            checked={draftCatalogProductTypes.includes(type)}
+                            onChange={() => setDraftCatalogProductTypes(prev =>
                               prev.includes(type)
                                 ? prev.filter(t => t !== type)
                                 : [...prev, type]
                             )}
                             className="w-[15px] h-[15px] rounded text-[#22c55e] focus:ring-[#22c55e] border-gray-300 cursor-pointer accent-[#22c55e]"
                           />
-                          <span className={`text-[13px] ${selectedProductTypes.includes(type) ? 'text-[#22c55e] font-semibold' : 'text-gray-600 group-hover:text-gray-800'}`}>
+                          <span className={`text-[13px] ${draftCatalogProductTypes.includes(type) ? 'text-[#22c55e] font-semibold' : 'text-gray-600 group-hover:text-gray-800'}`}>
                             {type}
                           </span>
                         </div>
@@ -7014,15 +7405,31 @@ export const HomeView = ({
               <p className="text-[12px] font-semibold text-gray-500 mb-3">Khoảng giá</p>
               <div className="flex items-center gap-2 mb-3">
                 <div className="relative flex-1">
-                  <input type="text" placeholder="Tối thiểu" className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-[12px] outline-none focus:border-[#22c55e] focus:ring-1 focus:ring-[#22c55e]/30 transition-all" />
+                  <input
+                    type="text"
+                    placeholder="Tối thiểu"
+                    value={draftCatalogPriceMin}
+                    onChange={(e) => setDraftCatalogPriceMin(e.target.value)}
+                    className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-[12px] outline-none focus:border-[#22c55e] focus:ring-1 focus:ring-[#22c55e]/30 transition-all"
+                  />
                   <span className="absolute right-2.5 top-2 text-[11px] text-gray-400 font-medium">đ</span>
                 </div>
                 <div className="relative flex-1">
-                  <input type="text" placeholder="Tối đa" className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-[12px] outline-none focus:border-[#22c55e] focus:ring-1 focus:ring-[#22c55e]/30 transition-all" />
+                  <input
+                    type="text"
+                    placeholder="Tối đa"
+                    value={draftCatalogPriceMax}
+                    onChange={(e) => setDraftCatalogPriceMax(e.target.value)}
+                    className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-[12px] outline-none focus:border-[#22c55e] focus:ring-1 focus:ring-[#22c55e]/30 transition-all"
+                  />
                   <span className="absolute right-2.5 top-2 text-[11px] text-gray-400 font-medium">đ</span>
                 </div>
               </div>
-              <button className="w-full btn-buy bg-[#22c55e] hover:bg-[#16a34a] text-white font-semibold py-2.5 rounded-lg text-[13px] shadow-sm shadow-green-500/20">
+              <button
+                type="button"
+                onClick={applyCatalogSidebarFilters}
+                className="w-full btn-buy bg-[#22c55e] hover:bg-[#16a34a] text-white font-semibold py-2.5 rounded-lg text-[13px] shadow-sm shadow-green-500/20"
+              >
                 Áp dụng bộ lọc
               </button>
             </div>
@@ -7234,6 +7641,14 @@ export const HomeView = ({
                         </span>
                       )}
                     </div>
+                    <StorefrontFavoriteHeartButton
+                      active={isProductFavorited(product)}
+                      size="sm"
+                      onToggle={(e) => {
+                        e.stopPropagation();
+                        toggleFavoriteProduct(product);
+                      }}
+                    />
                   </div>
                   {/* Out of stock overlay */}
                   {product.isOutOfStock && (
@@ -7410,7 +7825,12 @@ export const HomeView = ({
           } else {
             setSelectedCategories([]);
           }
-          setSelectedProductTypes(productTypes);
+          setDraftCatalogProductTypes(productTypes);
+          setAppliedCatalogProductTypes(productTypes);
+          setDraftCatalogPriceMin('');
+          setDraftCatalogPriceMax('');
+          setAppliedCatalogPriceMin(null);
+          setAppliedCatalogPriceMax(null);
           openCatalogPage();
         }}
         featuredItems={sampleProducts.slice(0, 6).map((p) => ({
@@ -7476,6 +7896,10 @@ export const HomeView = ({
           onSelectServiceCategory={name => openGuestCatalogWithCategory(name, 'Dịch vụ')}
           onOpenFaqs={() => openStorefrontInfo('faq')}
           onOpenSupport={openStorefrontSupportPage}
+          onOpenShare={openStorefrontSharePage}
+          onOpenTool={openStorefrontToolsPage}
+          activeToolId={storefrontPageToToolId(storefrontPage)}
+          sharePageActive={storefrontPage === 'share'}
           authSlot={() => (
             <StorefrontAuthDropdown
               onLoginSuccess={onStorefrontLoginSuccess}
@@ -7492,6 +7916,28 @@ export const HomeView = ({
               onOpenFaqs={() => openStorefrontInfo('faq')}
               fixedHeaderOffset
             />
+            <StorefrontLandingFooter
+              onChatSupport={openStorefrontRegister}
+              onJoinSeller={openStorefrontRegister}
+              onOpenInfo={openStorefrontInfo}
+            />
+          </>
+        ) : storefrontPage === 'share' ? (
+          <>
+            <StorefrontSharePage
+              isLoggedIn={false}
+              onRequireLogin={openStorefrontRegister}
+              fixedHeaderOffset
+            />
+            <StorefrontLandingFooter
+              onChatSupport={openStorefrontRegister}
+              onJoinSeller={openStorefrontRegister}
+              onOpenInfo={openStorefrontInfo}
+            />
+          </>
+        ) : isStorefrontToolPage(storefrontPage) ? (
+          <>
+            <StorefrontToolPage pageId={storefrontPage} fixedHeaderOffset />
             <StorefrontLandingFooter
               onChatSupport={openStorefrontRegister}
               onJoinSeller={openStorefrontRegister}
