@@ -277,15 +277,6 @@ export const OrderDetailView = ({
                 )}
               </div>
             </div>
-
-            <div className="flex flex-wrap items-center gap-2.5">
-              <button className="px-4 py-2 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-[12px] font-bold transition-colors">
-                Liên hệ hỗ trợ
-              </button>
-              <button className="px-5 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-[12px] font-bold transition-all shadow-sm shadow-blue-500/20 active:scale-95 border border-blue-500">
-                Xem hóa đơn
-              </button>
-            </div>
           </div>
 
           {/* Cards Grid */}

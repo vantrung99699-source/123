@@ -67,6 +67,10 @@ import {
   toggleStorefrontFavorite,
 } from './storefront/storefrontFavorites';
 import {
+  stripProductTypeFeePercent,
+  uniqueCustomerProductTypeLabels,
+} from './storefront/storefrontProductTypeLabel';
+import {
   buildStorefrontBasicProfile,
   setStorefrontTelegramLinked,
 } from './storefront/storefrontBasicProfile';
@@ -4243,8 +4247,9 @@ export const HomeView = ({
       } else {
         setSelectedCategories([]);
       }
-      setDraftCatalogProductTypes(productTypes);
-      setAppliedCatalogProductTypes(productTypes);
+      const types = uniqueCustomerProductTypeLabels(productTypes);
+      setDraftCatalogProductTypes(types);
+      setAppliedCatalogProductTypes(types);
       setDraftCatalogPriceMin('');
       setDraftCatalogPriceMax('');
       setAppliedCatalogPriceMin(null);
@@ -4758,11 +4763,10 @@ export const HomeView = ({
     [storefrontDanhMucDichVu]
   );
 
-  const normalizeTypeLabel = useCallback((label: string) => {
-    // Ví dụ: "Tài khoản FB (4%)" -> "Tài khoản FB"
-    // Ví dụ: "Dịch vụ code tool (6%)" -> "Dịch vụ code tool"
-    return label.replace(/\s*\(\s*[\d.,]+\s*%?\s*\)\s*$/, '').trim();
-  }, []);
+  const normalizeTypeLabel = useCallback(
+    (label: string) => stripProductTypeFeePercent(label),
+    []
+  );
 
   const sidebarLine = useMemo<StorefrontLine>(() => {
     if (selectedCategories.length === 0) return 'Bán sản phẩm';
@@ -4780,20 +4784,20 @@ export const HomeView = ({
 
   const sidebarTypeOptions = useMemo(() => {
     if (selectedCategories.length === 0) return [];
-    const out: string[] = [];
+    const raw: string[] = [];
     for (const catKey of selectedCategories) {
       const productTypes = storefrontProductTypesByCategory[catKey] ?? [];
       const serviceTypes = storefrontServiceTypesByCategory[catKey] ?? [];
-      // Một category key thường chỉ thuộc 1 line, nhưng keep safe để sync đúng.
-      out.push(...productTypes, ...serviceTypes);
+      raw.push(...productTypes, ...serviceTypes);
     }
-    return out;
+    return uniqueCustomerProductTypeLabels(raw);
   }, [selectedCategories, storefrontProductTypesByCategory, storefrontServiceTypesByCategory]);
 
   useEffect(() => {
     // Khi Admin thêm/xóa/sửa loại sản phẩm, hoặc người dùng đổi category,
     // lọc các type đã tick để tránh checkbox "kẹt" ở giá trị không còn tồn tại.
-    const prune = (prev: string[]) => prev.filter((t) => sidebarTypeOptions.includes(t));
+    const prune = (prev: string[]) =>
+      uniqueCustomerProductTypeLabels(prev).filter((t) => sidebarTypeOptions.includes(t));
     setDraftCatalogProductTypes(prune);
     setAppliedCatalogProductTypes(prune);
   }, [sidebarTypeOptions]);
@@ -7825,8 +7829,9 @@ export const HomeView = ({
           } else {
             setSelectedCategories([]);
           }
-          setDraftCatalogProductTypes(productTypes);
-          setAppliedCatalogProductTypes(productTypes);
+          const types = uniqueCustomerProductTypeLabels(productTypes);
+          setDraftCatalogProductTypes(types);
+          setAppliedCatalogProductTypes(types);
           setDraftCatalogPriceMin('');
           setDraftCatalogPriceMax('');
           setAppliedCatalogPriceMin(null);

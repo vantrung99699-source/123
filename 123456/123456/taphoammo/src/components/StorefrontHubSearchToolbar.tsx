@@ -8,6 +8,7 @@ import {
   Check,
   Layers,
 } from 'lucide-react';
+import { uniqueCustomerProductTypeLabels } from '../storefront/storefrontProductTypeLabel';
 
 const SHOP_HUB_CATEGORY_OPTIONS = [
   'Tất cả danh mục',
@@ -397,7 +398,10 @@ export function ShopHubSearchToolbar({
   );
 
   const typeOptions = categoryKey
-    ? [...(productTypesByCategory[categoryKey] ?? []), ...(serviceTypesByCategory[categoryKey] ?? [])]
+    ? uniqueCustomerProductTypeLabels([
+        ...(productTypesByCategory[categoryKey] ?? []),
+        ...(serviceTypesByCategory[categoryKey] ?? []),
+      ])
     : [];
 
   useEffect(() => {

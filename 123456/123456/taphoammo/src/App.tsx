@@ -3250,6 +3250,7 @@ const OrdersView = ({ onOrderClick, orders, setOrders }: { onOrderClick: (id: st
                       order={order}
                       badgeClassName={`px-3 py-1 rounded-xl text-[11px] font-bold border whitespace-nowrap ${getStatusStyle(order.status)}`}
                       getStatusStyle={getStatusStyle}
+                      showSellerDeadline
                     />
                   </td>
                 </tr>
