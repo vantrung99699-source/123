@@ -160,7 +160,6 @@ import {
   Download,
   Calendar,
   Check,
-  ShoppingCart,
   Facebook,
   Instagram,
   Twitter,
@@ -442,7 +441,6 @@ const CreateCategoryView = ({
   const [isPrivateWarehouse, setIsPrivateWarehouse] = useState(false);
   const [checkLiveUid, setCheckLiveUid] = useState(false);
   const [allowPreOrder, setAllowPreOrder] = useState(false);
-  const [saleType, setSaleType] = useState('Mới nhất');
   const [storeImageDataUrl, setStoreImageDataUrl] = useState<string | undefined>(undefined);
   const [imageDragActive, setImageDragActive] = useState(false);
   const storeImageInputRef = useRef<HTMLInputElement>(null);
@@ -487,7 +485,6 @@ const CreateCategoryView = ({
       setIsPrivateWarehouse(false);
       setCheckLiveUid(false);
       setAllowPreOrder(false);
-      setSaleType('Mới nhất');
       setStoreImageDataUrl(undefined);
       return;
     }
@@ -526,8 +523,6 @@ const CreateCategoryView = ({
       setIsPrivateWarehouse(cfg.isPrivateWarehouse ?? false);
       setCheckLiveUid(cfg.isLiveUidCheck ?? false);
       setAllowPreOrder(cfg.allowPreOrder ?? false);
-      const st = cfg.saleType;
-      setSaleType(st === 'Oldest' ? 'Cũ nhất' : st === 'Random' ? 'Ngẫu nhiên' : 'Mới nhất');
     } else {
       setIsSingleProduct(true);
       setAllowReseller(true);
@@ -535,7 +530,6 @@ const CreateCategoryView = ({
       setIsPrivateWarehouse(false);
       setCheckLiveUid(false);
       setAllowPreOrder(false);
-      setSaleType('Mới nhất');
     }
     setStoreImageDataUrl(c.storeImage);
     // Chỉ hydrate lại khi đổi gian hàng đang sửa hoặc line cha (tránh reset form khi gõ ở chế độ tạo)
@@ -698,7 +692,7 @@ const CreateCategoryView = ({
                   isPrivateWarehouse: isServiceBusinessLine ? false : isPrivateWarehouse,
                   isLiveUidCheck: isServiceBusinessLine ? false : checkLiveUid,
                   allowPreOrder: isServiceBusinessLine ? false : allowPreOrder,
-                  saleType: saleType === 'Mới nhất' ? 'Newest' : saleType === 'Cũ nhất' ? 'Oldest' : 'Random'
+                  saleType: editingCategory?.configuration?.saleType ?? 'Newest',
                 }
               });
             }}
@@ -1068,33 +1062,6 @@ const CreateCategoryView = ({
                     </div>
                   </div>
                 )}
-              </div>
-            </div>
-
-            {/* Sale Type Section */}
-            <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
-              <div className="p-5 border-b border-slate-100 flex items-center gap-3 bg-slate-50/30">
-                <div className="w-9 h-9 bg-amber-50 text-amber-600 rounded-xl flex items-center justify-center">
-                  <ShoppingCart size={18} />
-                </div>
-                <h3 className="text-sm font-bold text-slate-900 font-display">Kiểu bán</h3>
-              </div>
-              <div className="p-5">
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">Kiểu bán</label>
-                  <div className="relative">
-                    <select 
-                      value={saleType}
-                      onChange={(e) => setSaleType(e.target.value)}
-                      className="w-full appearance-none px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:bg-white focus:border-blue-500 transition-all outline-none pr-8"
-                    >
-                      <option>Mới nhất</option>
-                      <option>Cũ nhất</option>
-                      <option>Ngẫu nhiên</option>
-                    </select>
-                    <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-                  </div>
-                </div>
               </div>
             </div>
 
