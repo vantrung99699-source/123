@@ -1,7 +1,7 @@
 import { listStorefrontSignups } from '../auth/storefrontDemoAccounts';
 import { STOREFRONT_VIRTUAL_ACCOUNT } from '../auth/roles';
 import type { Category } from '../gianHang/types';
-import { getSellerRegistrationByEmail, listSellerRegistrations } from './storefrontSellerRegistration';
+import { listSellerRegistrations } from './storefrontSellerRegistration';
 import { pushStorefrontUserNotification } from './storefrontUserNotifications';
 
 function normEmail(email: string): string {
@@ -49,15 +49,10 @@ export function notifyGianHangApproved(cat: Category): void {
   if (!email) return;
 
   const shopName = cat.name.trim() || 'Gian hàng của bạn';
-  const sellerName =
-    getSellerRegistrationByEmail(email)?.fullName.trim() ||
-    cat.createdByName?.trim() ||
-    cat.sellerDisplayName?.trim() ||
-    'bạn';
 
   pushStorefrontUserNotification(email, {
-    title: 'Phê duyệt gian hàng thành công',
-    content: `Chúc mừng ${sellerName}! Gian hàng «${shopName}» đã được duyệt. Vào Quản lý cửa hàng để đăng mặt hàng và bắt đầu bán.`,
+    title: 'Mở gian hàng thành công',
+    content: `Chúc mừng! Bạn đã mở gian hàng «${shopName}» thành công.`,
     type: 'success',
     kind: 'gian_hang_approved',
   });

@@ -34,6 +34,8 @@ export interface ProductOrdersViewProps {
   onFulfillPreOrder?: (orderId: string) => { ok: boolean; message: string };
   defaultStatusFilter?: string;
   onMessageBuyer?: (orderId: string) => void;
+  /** Tab riêng đặt trước — ẩn lọc «Đặt trước», thêm «Chờ giao». */
+  preOrderTab?: boolean;
 }
 
 export function ProductOrdersView({
@@ -43,11 +45,12 @@ export function ProductOrdersView({
   onFulfillPreOrder,
   defaultStatusFilter = 'Tất cả',
   onMessageBuyer,
+  preOrderTab = false,
 }: ProductOrdersViewProps) {
-  const [activeFilter, setActiveFilter] = useState(defaultStatusFilter);
+  const [activeFilter, setActiveFilter] = useState(preOrderTab ? 'Chờ giao' : defaultStatusFilter);
   useEffect(() => {
-    setActiveFilter(defaultStatusFilter);
-  }, [defaultStatusFilter]);
+    setActiveFilter(preOrderTab ? 'Chờ giao' : defaultStatusFilter);
+  }, [defaultStatusFilter, preOrderTab]);
   const [search, setSearch] = useState('');
   const [isWarrantyModalOpen, setIsWarrantyModalOpen] = useState(false);
   const [isCancelModalOpen, setIsCancelModalOpen] = useState(false);
@@ -166,27 +169,40 @@ export function ProductOrdersView({
     window.alert(getFastForwardResultMessage(before, after));
   };
 
-  const filters = [
-    'Tất cả',
-    'Hoàn thành',
-    'Đang thực hiện',
-    'Khiếu nại',
-    'Tranh chấp',
-    'Tạm giữ tiền',
-    'Thất bại',
-    'Chờ xác nhận',
-    'Đặt trước',
-  ];
+  const filters = preOrderTab
+    ? ['Tất cả', 'Chờ giao', 'Hoàn thành', 'Thất bại']
+    : [
+        'Tất cả',
+        'Hoàn thành',
+        'Đang thực hiện',
+        'Khiếu nại',
+        'Tranh chấp',
+        'Tạm giữ tiền',
+        'Thất bại',
+        'Chờ xác nhận',
+        'Đặt trước',
+      ];
 
   const filteredOrders = orders
     .filter(order => {
       const isProduct = order.order_type !== 'service';
       if (!isProduct) return false;
 
-      const matchesFilter =
-        activeFilter === 'Tất cả' ||
-        (activeFilter === 'Đặt trước' && order.isPreOrder === true) ||
-        order.status === activeFilter;
+      let matchesFilter = true;
+      if (preOrderTab) {
+        if (activeFilter === 'Chờ giao') {
+          matchesFilter = isPreOrderAwaitingFulfillment(order);
+        } else if (activeFilter === 'Hoàn thành') {
+          matchesFilter = Boolean(order.preOrderFulfilled) || order.status === 'Hoàn thành';
+        } else if (activeFilter === 'Thất bại') {
+          matchesFilter = order.status === 'Thất bại';
+        }
+      } else {
+        matchesFilter =
+          activeFilter === 'Tất cả' ||
+          (activeFilter === 'Đặt trước' && order.isPreOrder === true) ||
+          order.status === activeFilter;
+      }
       const matchesSearch = order.id.toLowerCase().includes(search.toLowerCase()) || 
                            order.buyerName.toLowerCase().includes(search.toLowerCase()) ||
                            order.productName.toLowerCase().includes(search.toLowerCase());

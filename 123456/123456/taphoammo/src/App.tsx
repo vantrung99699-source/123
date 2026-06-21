@@ -70,6 +70,10 @@ import {
 import type { PaymentHistory } from './admin/types';
 import { compareOrdersNewestFirst, parsePurchaseDateToMs, type Order, type OrderStatus } from './ordersTypes';
 import {
+  countPendingPreOrderProductOrders,
+  filterPreOrderProductOrders,
+} from './orderStatusBadge';
+import {
   GianHangManagePanel,
   type QuickCreateDemoResult,
 } from './gianHang/GianHangManagePanel';
@@ -3449,7 +3453,7 @@ export default function App() {
     return () => document.removeEventListener('pointerdown', onPointerDown, true);
   }, [isProfileOpen]);
   const [currentView, setCurrentView] = useState<
-    'home' | 'gian-hang' | 'don-hang' | 'don-hang-dich-vu' | 'don-hang-khieu-nai' | 'thong-ke' | 'quan-ly-reseller' | 'danh-gia' | 'ma-giam-gia' | 'don-hang-da-mua' | 'lich-su-thanh-toan' | 'order-detail' | 'admin-dashboard'
+    'home' | 'gian-hang' | 'don-hang' | 'don-hang-dich-vu' | 'don-hang-dat-truoc' | 'don-hang-khieu-nai' | 'thong-ke' | 'quan-ly-reseller' | 'danh-gia' | 'ma-giam-gia' | 'don-hang-da-mua' | 'lich-su-thanh-toan' | 'order-detail' | 'admin-dashboard'
   >(() => {
     if (typeof window === 'undefined') return 'home';
     const path = window.location.pathname;
@@ -3943,13 +3947,7 @@ export default function App() {
   }, [currentView, allOrders]);
 
   const pendingPreOrderCount = useMemo(
-    () =>
-      allOrders.filter(
-        o =>
-          o.isPreOrder &&
-          !o.preOrderFulfilled &&
-          !(o.deliveredItems?.length ?? 0)
-      ).length,
+    () => countPendingPreOrderProductOrders(allOrders),
     [allOrders]
   );
 
@@ -5604,7 +5602,7 @@ export default function App() {
             return;
           }
           navigate(
-            pendingPreOrderCount > 0 ? '/admin/orders/products' : '/admin/gian-hang'
+            pendingPreOrderCount > 0 ? '/admin/orders/preorders' : '/admin/gian-hang'
           );
         }}
         sellerPendingPreOrderCount={pendingPreOrderCount}
@@ -5699,6 +5697,13 @@ export default function App() {
                 label="Đơn hàng dịch vụ"
                 active={currentView === 'don-hang-dich-vu'}
                 onClick={() => navigate(adminShellViewToPath('don-hang-dich-vu'))}
+              />
+              <SidebarItem
+                icon={Clock}
+                label="Đơn hàng đặt trước"
+                active={currentView === 'don-hang-dat-truoc'}
+                onClick={() => navigate(adminShellViewToPath('don-hang-dat-truoc'))}
+                badge={pendingPreOrderCount > 0 ? pendingPreOrderCount : undefined}
               />
               <SidebarItem
                 icon={MessageSquareX}
@@ -5980,6 +5985,15 @@ export default function App() {
               setOrders={setAllOrders}
               onMessageBuyer={openAdminMessagesWithBuyer}
             />
+          ) : currentView === 'don-hang-dat-truoc' ? (
+            <ProductOrdersView
+              onOrderClick={navigateToOrderDetail}
+              orders={filterPreOrderProductOrders(allOrders)}
+              setOrders={setAllOrders}
+              onFulfillPreOrder={handleFulfillPreOrder}
+              onMessageBuyer={openAdminMessagesWithBuyer}
+              preOrderTab
+            />
           ) : currentView === 'don-hang' ? (
             <ProductOrdersView
               onOrderClick={navigateToOrderDetail}
@@ -5987,7 +6001,6 @@ export default function App() {
               setOrders={setAllOrders}
               onFulfillPreOrder={handleFulfillPreOrder}
               onMessageBuyer={openAdminMessagesWithBuyer}
-              defaultStatusFilter={pendingPreOrderCount > 0 ? 'Đặt trước' : 'Tất cả'}
             />
           ) : isWarehouseOpen && warehouseProduct && warehouseCategory ? (
             <WarehouseView

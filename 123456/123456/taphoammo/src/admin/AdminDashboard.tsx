@@ -36,6 +36,10 @@ import { SharePostManagementView } from './SharePostManagementView';
 import { readAdminNotifications } from './adminNotificationsStorage';
 import { countPendingSellerRegistrations } from '../storefront/storefrontSellerRegistration';
 import { countPendingSharePosts } from '../storefront/storefrontShare';
+import {
+  countPendingPreOrderProductOrders,
+  filterPreOrderProductOrders,
+} from '../orderStatusBadge';
 
 const VIEW_COMPONENTS: Record<
   Exclude<
@@ -46,6 +50,7 @@ const VIEW_COMPONENTS: Record<
     | 'gian-hang-approval'
     | 'users'
     | 'product-orders'
+    | 'preorder-orders'
     | 'service-orders'
     | 'complaint-orders'
     | 'top-stores'
@@ -163,14 +168,7 @@ export function AdminDashboard({
   );
 
   const pendingPreOrderCount = useMemo(
-    () =>
-      orders.filter(
-        o =>
-          o.isPreOrder &&
-          !o.preOrderFulfilled &&
-          !(o.deliveredItems?.length ?? 0) &&
-          o.order_type !== 'service'
-      ).length,
+    () => countPendingPreOrderProductOrders(orders),
     [orders]
   );
 
@@ -199,6 +197,7 @@ export function AdminDashboard({
     activeView === 'gian-hang-approval' ||
     activeView === 'users' ||
     activeView === 'product-orders' ||
+    activeView === 'preorder-orders' ||
     activeView === 'service-orders' ||
     activeView === 'complaint-orders' ||
     activeView === 'top-stores' ||
@@ -276,7 +275,7 @@ export function AdminDashboard({
             <React.Fragment key="product-orders">
               <AdminPanelOrderShell
                 title="Đơn hàng sản phẩm"
-                subtitle="Toàn bộ đơn sản phẩm của mọi người bán trên hệ thống — lọc theo người bán, xem chi tiết, giao đặt trước, bảo hành."
+                subtitle="Toàn bộ đơn sản phẩm của mọi người bán trên hệ thống — lọc theo người bán, xem chi tiết, bảo hành."
                 orders={orders.filter(o => o.order_type !== 'service')}
               >
                 {filtered => (
@@ -285,7 +284,24 @@ export function AdminDashboard({
                     setOrders={setOrdersSafe}
                     onOrderClick={openPanelOrderDetail}
                     onFulfillPreOrder={onFulfillPreOrder}
-                    defaultStatusFilter={pendingPreOrderCount > 0 ? 'Đặt trước' : 'Tất cả'}
+                  />
+                )}
+              </AdminPanelOrderShell>
+            </React.Fragment>
+          ) : activeView === 'preorder-orders' ? (
+            <React.Fragment key="preorder-orders">
+              <AdminPanelOrderShell
+                title="Đơn hàng đặt trước"
+                subtitle="Đơn khách đặt trước khi hết hàng — shop cần giao từ kho trong hạn quy định."
+                orders={filterPreOrderProductOrders(orders)}
+              >
+                {filtered => (
+                  <ProductOrdersView
+                    orders={filtered}
+                    setOrders={setOrdersSafe}
+                    onOrderClick={openPanelOrderDetail}
+                    onFulfillPreOrder={onFulfillPreOrder}
+                    preOrderTab
                   />
                 )}
               </AdminPanelOrderShell>

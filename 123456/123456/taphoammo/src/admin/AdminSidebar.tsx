@@ -27,6 +27,7 @@ import {
   ArrowLeft,
   PanelLeft,
   PanelLeftClose,
+  Clock,
   Settings,
 } from 'lucide-react';
 import type { AdminView } from './types';
@@ -66,6 +67,7 @@ const MENU_ITEMS: MenuItem[] = [
   { divider: true, id: 'product-orders' as AdminView, icon: ShoppingBag, label: '' },
   { id: 'product-orders', icon: ShoppingBag, label: 'Đơn hàng sản phẩm' },
   { id: 'service-orders', icon: Truck, label: 'Đơn hàng dịch vụ' },
+  { id: 'preorder-orders', icon: Clock, label: 'Đơn hàng đặt trước' },
   { id: 'complaint-orders', icon: MessageSquareX, label: 'Đơn hàng khiếu nại' },
   { id: 'top-stores', icon: Store, label: 'Gian hàng Top 1' },
   { divider: true, id: 'messages' as AdminView, icon: MessageSquare, label: '' },
@@ -335,7 +337,7 @@ export function AdminSidebar({
                 ? { ...item, badge: pendingGianHangCount }
                 : item.id === 'complaint-orders'
                   ? { ...item, badge: complaintOrderCount }
-                  : item.id === 'product-orders'
+                  : item.id === 'preorder-orders'
                     ? { ...item, badge: pendingPreOrderCount }
                     : item;
           return (

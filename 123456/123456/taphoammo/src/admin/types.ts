@@ -7,6 +7,7 @@ export type AdminView =
   | 'users'
   | 'sales'
   | 'product-orders'
+  | 'preorder-orders'
   | 'service-orders'
   | 'complaint-orders'
   | 'gian-hang-approval'

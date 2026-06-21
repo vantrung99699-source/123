@@ -31,6 +31,7 @@ export type AdminShellView =
   | 'gian-hang'
   | 'don-hang'
   | 'don-hang-dich-vu'
+  | 'don-hang-dat-truoc'
   | 'don-hang-khieu-nai'
   | 'thong-ke'
   | 'quan-ly-reseller'
@@ -45,6 +46,7 @@ export function pathToAdminShellView(pathname: string): AdminShellView | null {
   if (pathname === '/admin' || pathname === '/admin/') return 'gian-hang';
   if (pathname.startsWith('/admin/gian-hang')) return 'gian-hang';
   if (pathname === '/admin/orders' || pathname.startsWith('/admin/orders/products')) return 'don-hang';
+  if (pathname.startsWith('/admin/orders/preorders')) return 'don-hang-dat-truoc';
   if (pathname.startsWith('/admin/orders/services')) return 'don-hang-dich-vu';
   if (pathname.startsWith('/admin/orders/complaints')) return 'don-hang-khieu-nai';
   if (pathname === '/admin/thong-ke' || pathname.startsWith('/admin/thong-ke')) return 'thong-ke';
@@ -66,6 +68,8 @@ export function adminShellViewToPath(view: AdminShellView): string {
       return '/admin/orders/products';
     case 'don-hang-dich-vu':
       return '/admin/orders/services';
+    case 'don-hang-dat-truoc':
+      return '/admin/orders/preorders';
     case 'don-hang-khieu-nai':
       return '/admin/orders/complaints';
     case 'thong-ke':

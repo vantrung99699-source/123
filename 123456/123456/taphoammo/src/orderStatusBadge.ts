@@ -16,6 +16,18 @@ export function isPreOrderAwaitingFulfillment(order: Order): boolean {
   );
 }
 
+export function isPreOrderProductOrder(order: Order): boolean {
+  return order.order_type !== 'service' && Boolean(order.isPreOrder);
+}
+
+export function countPendingPreOrderProductOrders(orders: Order[]): number {
+  return orders.filter(o => isPreOrderProductOrder(o) && isPreOrderAwaitingFulfillment(o)).length;
+}
+
+export function filterPreOrderProductOrders(orders: Order[]): Order[] {
+  return orders.filter(isPreOrderProductOrder);
+}
+
 /** Nhãn badge: chờ giao → «Đặt trước»; hoàn 1 phần → «Hoàn 1 phần»; còn lại → `order.status`. */
 export function getOrderStatusDisplayLabel(order: Order): string {
   if (isPreOrderAwaitingFulfillment(order)) return 'Đặt trước';
