@@ -5,15 +5,22 @@ export interface StorefrontLandingFooterProps {
   onChatSupport?: () => void;
   onJoinSeller?: () => void;
   onOpenInfo?: (tab: StorefrontInfoTabId) => void;
+  /** sticky = đẩy xuống đáy viewport (landing); flow = ngay sau nội dung trang */
+  layout?: 'sticky' | 'flow';
 }
 
 export function StorefrontLandingFooter({
   onChatSupport,
   onJoinSeller,
   onOpenInfo,
+  layout = 'sticky',
 }: StorefrontLandingFooterProps) {
   return (
-    <footer className="bg-slate-900 text-slate-400 pt-20 pb-10 mt-auto">
+    <footer
+      className={`bg-slate-900 text-slate-400 pt-20 pb-10 ${
+        layout === 'sticky' ? 'mt-auto' : 'mt-10 border-t border-slate-800/80'
+      }`}
+    >
       <div className="container mx-auto px-4">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-12 mb-16">
           <div className="space-y-6">

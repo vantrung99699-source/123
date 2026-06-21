@@ -5729,6 +5729,9 @@ export const HomeView = ({
                               ) {
                                 setUserNotifPanelOpen(false);
                                 openStorefrontSupportChat();
+                              } else if (item.kind === 'gian_hang_approved') {
+                                setUserNotifPanelOpen(false);
+                                onNavigateToAdmin();
                               }
                             }}
                             className={`w-full text-left px-4 py-3 hover:bg-slate-50 transition-colors ${
@@ -7879,6 +7882,7 @@ export const HomeView = ({
       ) : null}
 
       <StorefrontLandingFooter
+        layout={storefrontPage === 'my-orders' ? 'flow' : 'sticky'}
         onChatSupport={storefrontLoggedIn ? openStorefrontSupportChat : openStorefrontRegister}
         onJoinSeller={
           storefrontLoggedIn

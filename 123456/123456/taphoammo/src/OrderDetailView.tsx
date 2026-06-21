@@ -15,6 +15,7 @@ import {
   User,
   Store,
   CreditCard,
+  Clock,
   X,
 } from 'lucide-react';
 import type { Order } from './ordersTypes';
@@ -24,7 +25,8 @@ import {
   ORDER_STATUS_BADGE_BASE,
   isPreOrderAwaitingFulfillment,
 } from './orderStatusBadge';
-import { formatPreOrderDeadlineRemainingLabel } from './storefront/preOrderAutoFail';
+import { formatPreOrderDeadlineRemainingLabel, getPreOrderDeadlineMs, getPreOrderDeliveryDeadlineDays } from './storefront/preOrderAutoFail';
+import { getOrderEffectiveNowMs } from './storefront/orderTimeSimulation';
 import { getOrderFailureReasonLabel, isOrderTimerAutoFailure } from './orderFailureLabel';
 import { getOrderRefundDisplay, hasPendingRefundOffer } from './orderRefund';
 import { parseDefectiveUploadText } from './storefront/defectiveItemUpload';
@@ -81,6 +83,33 @@ export const OrderDetailView = ({
   const preOrderDeadlineHint = awaitingPreOrderDelivery
     ? formatPreOrderDeadlineRemainingLabel(order)
     : null;
+  const preOrderEmptyDetails = useMemo(() => {
+    if (!awaitingPreOrderDelivery) return null;
+    const deadlineMs = getPreOrderDeadlineMs(order);
+    const deadlineDays = getPreOrderDeliveryDeadlineDays(order);
+    if (deadlineMs == null) {
+      return {
+        deadlineDays,
+        deadlineDateLabel: null,
+        countdownLabel: preOrderDeadlineHint,
+        isOverdue: false,
+      };
+    }
+    const remaining = deadlineMs - getOrderEffectiveNowMs(order);
+    const deadlineDateLabel = new Date(deadlineMs).toLocaleString('vi-VN', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+    return {
+      deadlineDays,
+      deadlineDateLabel,
+      countdownLabel: preOrderDeadlineHint,
+      isOverdue: remaining <= 0,
+    };
+  }, [awaitingPreOrderDelivery, order, preOrderDeadlineHint]);
 
   const accounts = useMemo(() => {
     if (order.deliveredItems && order.deliveredItems.length > 0) {
@@ -507,12 +536,89 @@ export const OrderDetailView = ({
               <tbody className="divide-y divide-slate-200">
                 {filteredAccounts.length === 0 ? (
                   <tr>
-                    <td colSpan={4} className="px-4 py-8 text-center text-[13px] text-slate-500 border border-slate-200">
-                      {order.deliveredItems?.length
-                        ? 'Không có dòng nào khớp tìm kiếm.'
-                        : awaitingPreOrderDelivery
-                          ? `Đơn đặt trước — shop chưa giao hàng từ kho.${preOrderDeadlineHint ? ` ${preOrderDeadlineHint}.` : ''} Quá hạn → Thất bại và hoàn tiền.`
-                          : 'Chưa có sản phẩm trong kho đơn hàng.'}
+                    <td colSpan={4} className="px-4 py-10 border border-slate-200 bg-slate-50/40">
+                      {order.deliveredItems?.length ? (
+                        <p className="text-center text-[13px] text-slate-500 py-2">
+                          Không có dòng nào khớp tìm kiếm.
+                        </p>
+                      ) : awaitingPreOrderDelivery && preOrderEmptyDetails ? (
+                        <div className="flex flex-col items-center justify-center gap-4 max-w-md mx-auto text-center py-4">
+                          <div className="w-14 h-14 rounded-2xl bg-emerald-50 border border-emerald-100 flex items-center justify-center shadow-sm">
+                            <Package size={26} className="text-emerald-600" strokeWidth={1.75} />
+                          </div>
+                          <span
+                            className={`${ORDER_STATUS_BADGE_BASE} ${getOrderStatusStyleForOrder(order)} text-[12px] px-3.5 py-1`}
+                          >
+                            {getOrderStatusDisplayLabel(order)}
+                          </span>
+                          <div>
+                            <p className="text-[15px] font-bold text-slate-800">Shop chưa giao hàng từ kho</p>
+                            <p className="text-[12px] text-slate-500 mt-1.5 leading-relaxed">
+                              Đơn đặt trước đã thanh toán — đang chờ shop xuất kho và giao sản phẩm cho bạn.
+                            </p>
+                          </div>
+                          <div className="w-full rounded-xl border border-slate-200 bg-white p-4 text-left shadow-sm space-y-3">
+                            <div className="flex items-center justify-between gap-3">
+                              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                                Trạng thái
+                              </span>
+                              <span className="inline-flex items-center gap-1.5 text-[12px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-100 px-2.5 py-0.5 rounded-lg">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                                Chờ shop giao hàng
+                              </span>
+                            </div>
+                            <div className="h-px bg-slate-100" />
+                            <div className="flex items-center justify-between gap-3">
+                              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                                Hạn giao
+                              </span>
+                              <span className="text-[12px] font-bold text-slate-700 tabular-nums">
+                                {preOrderEmptyDetails.deadlineDays} ngày kể từ khi đặt
+                              </span>
+                            </div>
+                            {preOrderEmptyDetails.deadlineDateLabel ? (
+                              <div className="flex items-center justify-between gap-3">
+                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                                  Hết hạn
+                                </span>
+                                <span
+                                  className={`text-[12px] font-bold tabular-nums ${
+                                    preOrderEmptyDetails.isOverdue ? 'text-rose-600' : 'text-slate-700'
+                                  }`}
+                                >
+                                  {preOrderEmptyDetails.deadlineDateLabel}
+                                </span>
+                              </div>
+                            ) : null}
+                            {preOrderEmptyDetails.countdownLabel ? (
+                              <div className="flex items-center justify-between gap-3">
+                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                                  Còn lại
+                                </span>
+                                <span
+                                  className={`inline-flex items-center gap-1 text-[11px] font-bold tabular-nums px-2.5 py-0.5 rounded-lg border ${
+                                    preOrderEmptyDetails.isOverdue
+                                      ? 'bg-rose-50 text-rose-700 border-rose-200'
+                                      : 'bg-amber-50 text-amber-800 border-amber-200'
+                                  }`}
+                                >
+                                  <Clock size={12} />
+                                  {preOrderEmptyDetails.countdownLabel}
+                                </span>
+                              </div>
+                            ) : null}
+                          </div>
+                          <p className="text-[11px] text-slate-500 leading-relaxed">
+                            Nếu shop không giao đúng hạn, đơn chuyển{' '}
+                            <span className="font-bold text-rose-600">Thất bại</span> và bạn được{' '}
+                            <span className="font-bold text-slate-700">hoàn tiền</span>.
+                          </p>
+                        </div>
+                      ) : (
+                        <p className="text-center text-[13px] text-slate-500 py-2">
+                          Chưa có sản phẩm trong kho đơn hàng.
+                        </p>
+                      )}
                     </td>
                   </tr>
                 ) : (

@@ -131,6 +131,7 @@ import {
 } from './components/ComplaintProcessingCell';
 import { buildPartialRefundOfferPatch, computePartialRefundVnd } from './orderRefund';
 import { sendSellerResolveNotifyToBuyer } from './storefront/sellerResolveBuyerMessage';
+import { notifyGianHangApproved } from './storefront/gianHangApprovalNotify';
 import { buildWarrantyOfferPatch } from './storefront/warrantyOffer';
 import { formatVnd, parsePriceToVndNumber } from './orderAmountDisplay';
 import { getComplaintEventDisplay } from './orderDateDisplay';
@@ -1075,14 +1076,13 @@ const CreateCategoryView = ({
               </div>
               <div className="p-5 space-y-5">
                 <div className="grid grid-cols-1 gap-2">
-                  {isServiceBusinessLine && (
-                    <p className="text-[11px] text-violet-700 font-medium bg-violet-50 border border-violet-100 rounded-xl px-3 py-2 leading-relaxed">
-                      Gian dịch vụ không dùng kho hàng — khách chọn gói (vd. tăng like Facebook) và đặt hàng ngay trên
-                      storefront.
-                    </p>
-                  )}
                   {[
-                    { label: 'Sản phẩm duy nhất', checked: isSingleProduct, onChange: setIsSingleProduct },
+                    {
+                      label: 'Sản phẩm duy nhất ( bán 1 lần )',
+                      checked: isSingleProduct,
+                      onChange: setIsSingleProduct,
+                      hint: 'Cam kết chỉ bán 1 lần và duy nhất ở hệ thống',
+                    },
                     { label: 'Kho hàng riêng', checked: isPrivateWarehouse, onChange: setIsPrivateWarehouse, serviceHidden: true },
                     { label: 'Check live UID FB', checked: checkLiveUid, onChange: setCheckLiveUid, serviceHidden: true },
                     {
@@ -4822,6 +4822,7 @@ export default function App() {
   };
 
   const handleApproveGianHang = (categoryId: string) => {
+    const approved = findCategoryById(categories, categoryId);
     setCategories((prev) => {
       const walk = (cats: Category[]): Category[] =>
         cats.map((cat) => {
@@ -4835,6 +4836,9 @@ export default function App() {
         });
       return walk(prev);
     });
+    if (approved && !approved.isParent) {
+      notifyGianHangApproved({ ...approved, status: 'Đang bán' });
+    }
   };
 
   const handleQuickCreateDemoGianHang = (line: BusinessLine): QuickCreateDemoResult => {
@@ -6184,6 +6188,7 @@ export default function App() {
                     : getSessionLoginUsername()
                 ).slice(0, 60),
                 createdByName: getSessionDisplayName(),
+                createdByEmail: getSessionBuyerEmail(),
                 status: 'Chờ duyệt',
                 businessLine: clsBiz,
               };

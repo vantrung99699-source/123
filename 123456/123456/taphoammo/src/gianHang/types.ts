@@ -59,6 +59,8 @@ export interface Category {
   createdAt?: number;
   sellerDisplayName?: string;
   createdByName?: string;
+  /** Email người tạo gian — dùng gửi thông báo phê duyệt storefront */
+  createdByEmail?: string;
   status?: Status;
 }
 
